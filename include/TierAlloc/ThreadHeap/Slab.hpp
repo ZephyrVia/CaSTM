@@ -2,15 +2,13 @@
 #include "common/GlobalConfig.hpp"
 #include "common/AtomicFreeList.hpp"
 
-#include <atomic>
-#include <cstddef>
 #include <cstdint>
 
 class SizeClassPool;
 
-struct alignas(kCacheLineSize) ChunkMetadata {
+struct alignas(kCacheLineSize) Slab {
 public:
-    static ChunkMetadata* CreateAt(void* chunk_start, SizeClassPool* pool, uint32_t  block_size);
+    static Slab* CreateAt(void* chunk_start, SizeClassPool* pool, uint32_t  block_size);
 
     [[nodiscard]] void* allocate();
     bool freeLocal(void* ptr);
@@ -25,21 +23,22 @@ public:
     [[nodiscard]] bool isFull() const;
     [[nodiscard]] bool isEmpty() const;
 
-    ChunkMetadata* prev = nullptr;
-    ChunkMetadata* next = nullptr;
+    Slab* prev = nullptr;
+    Slab* next = nullptr;
 
 private:
-    ChunkMetadata() = default;
+    Slab() = default;
 
     void* local_free_list_ = nullptr;
-    AtomicFreeList remote_free_list_{};
 
+    SizeClassPool* owner_ = nullptr;
+    
     char* bump_ptr_ = nullptr;
     char* end_ptr_ = nullptr;
-    
-    SizeClassPool* owner_ = nullptr;
 
     uint32_t block_size_ = 0;
     uint32_t max_block_count_ = 0;
     uint32_t allocated_count_ = 0;
+
+    alignas(kCacheLineSize) AtomicFreeList remote_free_list_{}; 
 };

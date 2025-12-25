@@ -4,7 +4,7 @@
 add_executable(run_tests
     test_central_heap.cpp
     test_AtomicFreeList.cpp
-    test_ChunkMetadata.cpp
+    test_slab.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest

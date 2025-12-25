@@ -2,7 +2,6 @@
 #include <thread>
 #include <vector>
 #include <atomic>
-#include <algorithm> // for std::find
 
 // 包含你的头文件
 #include "common/AtomicFreeList.hpp"

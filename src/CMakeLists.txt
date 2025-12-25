@@ -7,7 +7,7 @@ add_library(mylib STATIC
     TierAlloc/CentralHeap/SystemChunkAllocator.cpp
     TierAlloc/CentralHeap/CentralHeap.cpp
 
-    TierAlloc/ThreadHeap/ChunkMetadata.cpp
+    TierAlloc/ThreadHeap/Slab.cpp
 
 )
 

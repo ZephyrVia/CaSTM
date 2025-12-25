@@ -1,11 +1,9 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include <cstring>
-#include <memory>
-#include <algorithm>
 
 // 包含你的头文件
-#include "ThreadHeap/ChunkMetadata.hpp"
+#include "ThreadHeap/Slab.hpp"
 #include "common/GlobalConfig.hpp"
 
 // 前置声明模拟
@@ -33,7 +31,7 @@ protected:
     }
 
     // 辅助：检查指针是否在 Bump Pointer 区域内
-    bool IsInBumpArea(void* ptr, ChunkMetadata* meta) {
+    bool IsInBumpArea(void* ptr, Slab* meta) {
         // 这是一个黑盒测试，我们只能通过分配行为推断，
         // 或者通过友元/Getter访问私有变量。
         // 这里我们通过地址范围判断。
@@ -48,7 +46,7 @@ protected:
 // 1. 初始化测试
 TEST_F(ChunkMetadataTest, Initialization) {
     uint32_t block_size = 64;
-    auto* meta = ChunkMetadata::CreateAt(aligned_chunk_start_, dummy_pool_, block_size);
+    auto* meta = Slab::CreateAt(aligned_chunk_start_, dummy_pool_, block_size);
 
     ASSERT_NE(meta, nullptr);
     EXPECT_EQ(meta->owner(), dummy_pool_);
@@ -59,7 +57,7 @@ TEST_F(ChunkMetadataTest, Initialization) {
 
     // 验证最大块数计算是否合理 (2MB - Header) / 64
     // Header 至少是 sizeof(ChunkMetadata) 对齐到 64
-    size_t header_size = (sizeof(ChunkMetadata) + 63) & ~63;
+    size_t header_size = (sizeof(Slab) + 63) & ~63;
     uint32_t expected_max = (kChunkSize - header_size) / block_size;
     EXPECT_EQ(meta->max_block_count(), expected_max);
 }
@@ -67,7 +65,7 @@ TEST_F(ChunkMetadataTest, Initialization) {
 // 2. Bump Pointer 分配测试
 TEST_F(ChunkMetadataTest, AllocatesSequentiallyUsingBumpPointer) {
     uint32_t block_size = 128;
-    auto* meta = ChunkMetadata::CreateAt(aligned_chunk_start_, dummy_pool_, block_size);
+    auto* meta = Slab::CreateAt(aligned_chunk_start_, dummy_pool_, block_size);
 
     void* p1 = meta->allocate();
     void* p2 = meta->allocate();
@@ -86,7 +84,7 @@ TEST_F(ChunkMetadataTest, AllocatesSequentiallyUsingBumpPointer) {
 
 // 3. Local Free & Reuse (LIFO) 测试
 TEST_F(ChunkMetadataTest, LocalFreeAndReuseLIFO) {
-    auto* meta = ChunkMetadata::CreateAt(aligned_chunk_start_, dummy_pool_, 64);
+    auto* meta = Slab::CreateAt(aligned_chunk_start_, dummy_pool_, 64);
 
     void* p1 = meta->allocate();
     void* p2 = meta->allocate();
@@ -112,7 +110,7 @@ TEST_F(ChunkMetadataTest, LocalFreeAndReuseLIFO) {
 
 // 4. Remote Free & Reclaim 测试 (核心逻辑)
 TEST_F(ChunkMetadataTest, RemoteFreeAndReclaim) {
-    auto* meta = ChunkMetadata::CreateAt(aligned_chunk_start_, dummy_pool_, 64);
+    auto* meta = Slab::CreateAt(aligned_chunk_start_, dummy_pool_, 64);
 
     void* p1 = meta->allocate();
     void* p2 = meta->allocate();
@@ -157,7 +155,7 @@ TEST_F(ChunkMetadataTest, AllocateTriggersReclaimAutomatically) {
     
     // 构造场景：
     // 1. 创建 Chunk
-    auto* meta = ChunkMetadata::CreateAt(aligned_chunk_start_, dummy_pool_, 64);
+    auto* meta = Slab::CreateAt(aligned_chunk_start_, dummy_pool_, 64);
     
     // 2. 将 Chunk 填满 (或者填很多)
     std::vector<void*> ptrs;
@@ -207,7 +205,7 @@ TEST_F(ChunkMetadataTest, StateTransitions) {
     // 让我们算一下：Header ~ 128B. 2MB - 128B. 
     // 设 BlockSize = 1MB (1024*1024). Max = 1.
     uint32_t huge_block = 1024 * 1024; 
-    auto* meta = ChunkMetadata::CreateAt(aligned_chunk_start_, dummy_pool_, huge_block);
+    auto* meta = Slab::CreateAt(aligned_chunk_start_, dummy_pool_, huge_block);
 
     EXPECT_TRUE(meta->isEmpty());
 

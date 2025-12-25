@@ -1,4 +1,4 @@
-#include "ThreadHeap/ChunkMetadata.hpp"
+#include "ThreadHeap/Slab.hpp"
 #include "common/GlobalConfig.hpp"
 
 #include <cassert>
@@ -7,17 +7,17 @@
 #include <new>
 
 
-ChunkMetadata* ChunkMetadata::CreateAt(void *chunk_start, SizeClassPool *pool, uint32_t block_size) {
+Slab* Slab::CreateAt(void *chunk_start, SizeClassPool *pool, uint32_t block_size) {
     assert(chunk_start != nullptr);
     assert(block_size >= sizeof(void*));
 
-    ChunkMetadata* meta = new (chunk_start) ChunkMetadata();
+    Slab* meta = new (chunk_start) Slab();
 
     meta->owner_ = pool;
     meta->block_size_ = block_size;
 
     uintptr_t base = reinterpret_cast<uintptr_t>(chunk_start); 
-    size_t meta_size = sizeof(ChunkMetadata);
+    size_t meta_size = sizeof(Slab);
     size_t head_size = (meta_size + kCacheLineSize - 1) & ~(kCacheLineSize - 1);
     
     meta->bump_ptr_ = reinterpret_cast<char*>(base + head_size);
@@ -29,7 +29,7 @@ ChunkMetadata* ChunkMetadata::CreateAt(void *chunk_start, SizeClassPool *pool, u
     return meta;
 }
 
-[[nodiscard]] void* ChunkMetadata::allocate() {
+[[nodiscard]] void* Slab::allocate() {
     if(local_free_list_ != nullptr) {
         void* ptr = local_free_list_;
         local_free_list_ = *reinterpret_cast<void**>(ptr);
@@ -54,21 +54,20 @@ ChunkMetadata* ChunkMetadata::CreateAt(void *chunk_start, SizeClassPool *pool, u
 }
 
 
-bool ChunkMetadata::freeLocal(void* ptr) {
+bool Slab::freeLocal(void* ptr) {
     *reinterpret_cast<void**>(ptr) = local_free_list_;
     local_free_list_ = ptr;
-
     allocated_count_--;
 
     return allocated_count_ == 0;
 }
 
 
-void ChunkMetadata::freeRemote(void* ptr) {
+void Slab::freeRemote(void* ptr) {
     remote_free_list_.push(ptr);
 }
 
-uint32_t ChunkMetadata::reclaim_remote_memory() {
+uint32_t Slab::reclaim_remote_memory() {
     void* head = remote_free_list_.steal_all();
     if(head == nullptr)
         return 0;
@@ -90,28 +89,27 @@ uint32_t ChunkMetadata::reclaim_remote_memory() {
     return count;
 }
 
-
-uint32_t ChunkMetadata::block_size() const {
+uint32_t Slab::block_size() const {
     return block_size_;
 }
 
-uint32_t ChunkMetadata::max_block_count() const {
+uint32_t Slab::max_block_count() const {
     return max_block_count_;
 }
 
-uint32_t ChunkMetadata::allocated_count() const {
+uint32_t Slab::allocated_count() const {
     return allocated_count_;
 }
 
-SizeClassPool* ChunkMetadata::owner() const {
+SizeClassPool* Slab::owner() const {
     return owner_;
 }
 
-bool ChunkMetadata::isFull() const {
+bool Slab::isFull() const {
     return allocated_count_ == max_block_count_;
 }
 
-bool ChunkMetadata::isEmpty() const {
+bool Slab::isEmpty() const {
     return allocated_count_ == 0;
 }
 
