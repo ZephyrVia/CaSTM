@@ -11,6 +11,7 @@
 // 这是整个分配器的核心粒度
 constexpr size_t kChunkSize = 2 * 1024 * 1024;
 
+
 // 对应的对齐要求 (通常与 Chunk 大小一致，便于位运算寻址)
 constexpr size_t kChunkAlignment = kChunkSize;
 

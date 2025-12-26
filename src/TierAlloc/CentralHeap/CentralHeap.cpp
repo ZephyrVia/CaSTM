@@ -8,7 +8,7 @@ CentralHeap& CentralHeap::GetInstance() {
     return instance;
 }
 
-void* CentralHeap::fetchChunk() {
+[[nodiscard]] void* CentralHeap::fetchChunk() {
     void* ptr = free_list_.try_pop();
     if (ptr != nullptr) {
         return ptr;
@@ -36,4 +36,28 @@ void CentralHeap::returnChunk(void* ptr) {
 
 size_t CentralHeap::getFreeChunkCount() {
     return free_list_.size();
+}
+
+
+void* CentralHeap::allocateLarge(size_t nbytes) {
+
+    if (nbytes <= kChunkSize) {
+        return fetchChunk();
+    }
+
+    return system_allocator_.allocate(nbytes);
+}
+
+
+void CentralHeap::freeLarge(void* ptr, size_t nbytes) {
+    if (!ptr) return;
+
+    // Case 1: 归还的是单个 Chunk
+    if (nbytes <= kChunkSize) {
+        returnChunk(ptr);
+        return;
+    }
+
+    // Case 2: 归还的是超大内存
+    system_allocator_.deallocate(ptr, nbytes);
 }

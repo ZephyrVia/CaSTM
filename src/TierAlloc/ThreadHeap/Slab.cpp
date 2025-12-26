@@ -101,7 +101,7 @@ void* Slab::allocFromBump_() {
     return ptr;
 }
 
-void Slab::DestroyForReuse() {
+void Slab::Destroy() {
 #ifdef NDEBUG
     // 在 Release 模式下，只清理最危险的指针，性能开销最小
     this->owner_ = nullptr; 

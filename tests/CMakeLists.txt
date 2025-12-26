@@ -6,6 +6,7 @@ add_executable(run_tests
     test_AtomicFreeList.cpp
     test_slab.cpp
     test_SizeClassPool.cpp
+    test_SizeClassConfig.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest

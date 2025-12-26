@@ -9,10 +9,13 @@ class CentralHeap {
 public:
     static CentralHeap& GetInstance();
 
-    void* fetchChunk();
+    [[nodiscard]] void* fetchChunk();
     void returnChunk(void* ptr);
     size_t getFreeChunkCount();
 
+    [[nodiscard]] void* allocateLarge(size_t nbytes);
+    void freeLarge(void* ptr, size_t nbytes);
+    
 private:
     CentralHeap() = default;
     ~CentralHeap() = default;

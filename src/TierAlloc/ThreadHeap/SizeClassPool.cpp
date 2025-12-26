@@ -3,6 +3,7 @@
 #include "CentralHeap/CentralHeap.hpp"
 #include "ThreadHeap/Slab.hpp"
 #include "common/GlobalConfig.hpp"
+#include <cassert>
 
 SizeClassPool::~SizeClassPool() {
     auto& central = CentralHeap::GetInstance();
@@ -45,6 +46,8 @@ void* SizeClassPool::allocate() {
 
 
 void SizeClassPool::deallocate(Slab* slab, void* ptr) {
+    assert(slab->owner() == this);
+
     bool was_full = slab->isFull();
 
     bool is_local_empty = slab->freeLocal(ptr);
@@ -66,7 +69,7 @@ void SizeClassPool::deallocate(Slab* slab, void* ptr) {
             else {
                 partial_list_.remove(slab);
             }
-            slab->DestroyForReuse();
+            slab->Destroy();
             thread_chunk_cache_->returnChunk(reinterpret_cast<void*>(slab)); 
         }
     }
@@ -84,8 +87,9 @@ void* SizeClassPool::allocFromPartial_() {
 
 [[nodiscard]] void* SizeClassPool::allocFromRescue_() {
     int checks = 0;
+    const size_t kMaxRescueChecks = kMaxPoolRescueChecks;
 
-    while (!full_list_.empty() && checks < kMaxPoolRescueChecks) {
+    while (!full_list_.empty() && checks < kMaxRescueChecks) {
         Slab* victim = full_list_.front();
 
         if(victim->reclaimRemoteMemory() > 0) {

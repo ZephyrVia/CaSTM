@@ -10,6 +10,8 @@ add_library(mylib STATIC
     TierAlloc/ThreadHeap/Slab.cpp
     TierAlloc/ThreadHeap/SizeClassPool.cpp
 
+    TierAlloc/common/SizeClassConfig.cpp
+
 )
 
 # 头文件目录（公开给依赖 mylib 的目标）
