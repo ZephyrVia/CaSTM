@@ -73,7 +73,7 @@ void SizeClassPool::deallocate(Slab* slab, void* ptr) {
             thread_chunk_cache_->returnChunk(reinterpret_cast<void*>(slab)); 
         }
     }
-    else if (was_full) {
+    else if (was_full && slab != current_slab_) {
         full_list_.remove(slab);
         partial_list_.push_front(slab);
     }
