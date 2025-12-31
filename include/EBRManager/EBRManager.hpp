@@ -19,7 +19,7 @@ public:
     EBRManager(const EBRManager&&) = delete;
     EBRManager& operator=(const EBRManager&&) = delete;
 
-    static EBRManager* getInstance() {
+    static EBRManager* instance() {
         static EBRManager instance;
         return &instance;
     }

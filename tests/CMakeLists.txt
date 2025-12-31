@@ -13,6 +13,7 @@ add_executable(run_tests
     MVOSTM/test_TMVar.cpp
     MVOSTM/test_TransactionDescriptor.cpp
     MVOSTM/test_Transaction.cpp
+    MVOSTM/test_STM.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest

@@ -40,28 +40,62 @@ inline void Transaction::begin() {
 }
 
 
-template <typename T>
+// template <typename T>
+// T Transaction::load(TMVar<T>& var) {
+//     using Node = typename TMVar<T>::Node;
+
+//     auto& wset = desc_->writeSet();
+//     for(auto it = wset.rbegin(); it != wset.rend(); ++it) {
+//         if(it->tmvar_addr == &var) {
+//             return static_cast<Node*>(it->new_node)->payload;
+//         }
+//     }
+
+//     auto* curr = var.loadHead();
+//     desc_->addToReadSet(&var, TMVar<T>::validate);
+
+//     while (curr != nullptr) {
+//         if(curr->write_ts <= desc_->getReadVersion()) {
+//             return curr->payload;
+//         }
+//         curr = curr->prev;
+//     }
+//     throw RetryException(); 
+// }
+
+
+template<typename T>
 T Transaction::load(TMVar<T>& var) {
     using Node = typename TMVar<T>::Node;
-
+    
+    // 1. 先查 WriteSet (Read-Your-Own-Writes)
     auto& wset = desc_->writeSet();
     for(auto it = wset.rbegin(); it != wset.rend(); ++it) {
-        if(it->tmvar_addr == &var) {
-            return static_cast<Node*>(it->new_node)->payload;
-        }
+        if(it->tmvar_addr == &var) return static_cast<Node*>(it->new_node)->payload;
     }
-
+    
+    // 2. 查 ReadSet (优化：如果已经读过，直接返回之前的结果？)
+    // 这一步对于正确性不是必须的，但对于性能有帮助。
+    // 为简单起见，这里保持标准逻辑：从内存读取。
+    
     auto* curr = var.loadHead();
     desc_->addToReadSet(&var, TMVar<T>::validate);
 
+    // 3. 遍历版本链
     while (curr != nullptr) {
+        // 找到可见版本
         if(curr->write_ts <= desc_->getReadVersion()) {
             return curr->payload;
         }
         curr = curr->prev;
     }
+    
+    // 4. 【关键修复】如果遍历完链表都没找到可见版本 (curr == nullptr)
+    // 说明所有版本都比我的 RV 新，或者历史版本已经被剪枝。
+    // 必须中止事务！
     throw RetryException(); 
 }
+
 
 template <typename T>
 void Transaction::store(TMVar<T>& var, const T& val) {
