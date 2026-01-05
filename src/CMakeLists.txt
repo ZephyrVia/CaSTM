@@ -18,6 +18,8 @@ add_library(mylib STATIC
     EBRManager/LockFreeSingleLinkedList.cpp
     EBRManager/ThreadSlot.cpp
     EBRManager/ThreadSlotManager.cpp
+
+    CaSTM/Transaction.cpp
 )
 
 # 头文件目录（公开给依赖 mylib 的目标）

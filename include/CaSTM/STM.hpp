@@ -7,7 +7,6 @@
 #include <iostream>
 #include <sys/types.h>
 #include <thread>
-#include <functional>
 #include <type_traits>
 
 

@@ -2,16 +2,16 @@
 
 # 1. 创建一个测试可执行文件
 add_executable(run_tests
-    test_central_heap.cpp
-    test_AtomicFreeList.cpp
-    test_slab.cpp
-    test_SizeClassPool.cpp
-    test_SizeClassConfig.cpp
-    test_ThreadHeap.cpp
-    test_EBRManager.cpp
+    TierAlloc/test_central_heap.cpp
+    TierAlloc/test_AtomicFreeList.cpp
+    TierAlloc/test_slab.cpp
+    TierAlloc/test_SizeClassPool.cpp
+    TierAlloc/test_SizeClassConfig.cpp
+    TierAlloc/test_ThreadHeap.cpp
+
+    EBRManager/test_EBRManager.cpp
 
     CaSTM/test_TMVar.cpp
-    # MVOSTM/test_TransactionDescriptor.cpp
     CaSTM/test_Transaction.cpp
     CaSTM/test_STM.cpp
     CaSTM/test_STM_Tree.cpp

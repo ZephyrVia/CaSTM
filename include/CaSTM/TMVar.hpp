@@ -61,6 +61,18 @@ typename TMVar<T>::Node* TMVar<T>::loadHead() const {
     return head_.load(std::memory_order_acquire);
 }
 
+// 辅助函数：级联回收链表
+template<typename T>
+void TMVar<T>::chainDeleter_(void* p) {
+    auto* node = static_cast<Node*>(p);
+    while (node) {
+        auto* next = node->prev;
+        delete node; // 使用 VersionNode 的 delete (归还给内存池)
+        node = next;
+    }
+}
+
+
 template<typename T>
 bool TMVar<T>::validate(const void* addr, const void* expected_head, uint64_t rv) {
     const auto* tmvar = static_cast<const TMVar<T>*>(addr);
@@ -74,10 +86,6 @@ bool TMVar<T>::validate(const void* addr, const void* expected_head, uint64_t rv
     }
 
     // 3. 【时间检查】Head 是不是“未来数据”？
-    // 如果 current_head 存在，且它的时间戳 > 我的开始时间(rv)
-    // 说明在我开始之后，这个变量已经被更新过了。
-    // 虽然此时指针没变(identity check passed)，但我读到的是它的祖先(旧值)。
-    // 如果我现在提交，就会覆盖掉 current_head 代表的新值。
     if (current_head && current_head->write_ts > rv) {
         return false;
     }
@@ -110,17 +118,6 @@ void TMVar<T>::committer(void* tmvar_ptr, void* node_ptr, uint64_t wts) {
         curr->prev = nullptr;   // 关键步骤：逻辑斩断！
 
         EBRManager::instance()->retire(garbage, TMVar<T>::chainDeleter_);  // 现在的 garbage 才是真正安全的回收对象
-    }
-}
-
-// 辅助函数：级联回收链表
-template<typename T>
-void TMVar<T>::chainDeleter_(void* p) {
-    auto* node = static_cast<Node*>(p);
-    while (node) {
-        auto* next = node->prev;
-        delete node; // 使用 VersionNode 的 delete (归还给内存池)
-        node = next;
     }
 }
 
