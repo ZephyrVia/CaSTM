@@ -10,6 +10,7 @@
 #include <type_traits>
 
 
+
 inline TransactionDescriptor& getLocalDescriptor () {
     static thread_local TransactionDescriptor desc;
     return desc;
