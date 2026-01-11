@@ -60,19 +60,22 @@ T Transaction::load(TMVar<T>& var) {
 
     auto* curr = var.loadHead();
 
-    desc_->addToReadSet(&var, curr, TMVar<T>::validate);
-    
+        
     uint64_t rv = desc_->getReadVersion();
 
     // 遍历链表找 <= RV 的版本
-    while (curr != nullptr) {
-        if (curr->write_ts <= rv) {
-            return curr->payload;
-        }
+    while (curr != nullptr && curr->write_ts > rv) {
         curr = curr->prev;
     }
     
-    throw RetryException();    
+    if(curr == nullptr) {
+        // TODO：可更改为return nullptr
+        throw RetryException();   
+    }
+
+    desc_->addToReadSet(&var, curr, TMVar<T>::validate);
+
+    return curr->payload;
 }
 
 template <typename T>

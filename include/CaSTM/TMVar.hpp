@@ -86,9 +86,9 @@ bool TMVar<T>::validate(const void* addr, const void* expected_head, uint64_t rv
     }
 
     // 3. 【时间检查】Head 是不是“未来数据”？
-    if (current_head && current_head->write_ts > rv) {
-        return false;
-    }
+    // if (current_head && current_head->write_ts > rv) {
+    //     return false;
+    // }
     
     return true;
 }
