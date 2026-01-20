@@ -5,6 +5,9 @@
 #include <functional>
 #include <immintrin.h> 
 
+namespace STM {
+namespace Occ {
+
 class StripedLockTable {
 public:
     static constexpr size_t kTableSize = 1 << 20; 
@@ -71,3 +74,6 @@ private:
 
     LockEntry* locks_ = nullptr;
 };
+
+}
+}

@@ -1,5 +1,5 @@
 #pragma once 
-#include "common/GlobalConfig.hpp"
+#include "TierAlloc/common/GlobalConfig.hpp"
 
 #include <cassert>
 #include <cstdint>

@@ -11,10 +11,10 @@ add_executable(run_tests
 
     EBRManager/test_EBRManager.cpp
 
-    CaSTM/test_TMVar.cpp
-    CaSTM/test_Transaction.cpp
-    CaSTM/test_STM.cpp
-    CaSTM/test_STM_Tree.cpp
+    OccSTM/test_TMVar.cpp
+    OccSTM/test_Transaction.cpp
+    OccSTM/test_STM.cpp
+    OccSTM/test_STM_Tree.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest

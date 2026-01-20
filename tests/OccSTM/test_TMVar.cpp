@@ -2,9 +2,11 @@
 #include <string>
 
 // 包含你的核心头文件
-#include "CaSTM/TMVar.hpp"
+#include "OccSTM/TMVar.hpp"
 // VersionNode.hpp 通常被 TMVar 包含，但为了测试 detail 里的结构，也可以显式包含
-#include "CaSTM/VersionNode.hpp"
+#include "OccSTM/VersionNode.hpp"
+
+using namespace STM::Occ;
 
 namespace {
 
@@ -24,7 +26,7 @@ struct ComplexData {
 
 }
 
-class MVCCDataStructureTest : public ::testing::Test {
+class OccDataStructureTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // 如果 ThreadHeap 需要初始化，在这里调用
@@ -36,7 +38,7 @@ protected:
 };
 
 // 测试 1: 基础整数类型的初始化 (Genesis Node)
-TEST_F(MVCCDataStructureTest, IntegerInitialization) {
+TEST_F(OccDataStructureTest, IntegerInitialization) {
     // 实例化 TMVar<int>
     // 内部调用 new Node(0, nullptr, int{})
     TMVar<int> var;
@@ -53,7 +55,7 @@ TEST_F(MVCCDataStructureTest, IntegerInitialization) {
 }
 
 // 测试 2: 复杂对象的初始化
-TEST_F(MVCCDataStructureTest, ComplexObjectInitialization) {
+TEST_F(OccDataStructureTest, ComplexObjectInitialization) {
     // 显式调用有参构造函数
     TMVar<ComplexData> var(10, "init");
     
@@ -67,7 +69,7 @@ TEST_F(MVCCDataStructureTest, ComplexObjectInitialization) {
 }
 
 // 测试 3: 模拟事务更新 (链表挂载)
-TEST_F(MVCCDataStructureTest, VersionChaining) {
+TEST_F(OccDataStructureTest, VersionChaining) {
     TMVar<int> var(0); // head -> Node(ts=0, payload=0)
     
     // 1. 获取当前头节点
@@ -98,7 +100,7 @@ TEST_F(MVCCDataStructureTest, VersionChaining) {
 }
 
 // 测试 4: 验证 ThreadHeap/Operator New 是否正常工作
-TEST_F(MVCCDataStructureTest, AllocationSanity) {
+TEST_F(OccDataStructureTest, AllocationSanity) {
     TMVar<int> var;
     auto* n1 = var.loadHead();
     

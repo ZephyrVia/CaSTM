@@ -2,6 +2,10 @@
 
 #include <atomic>
 #include <cstdint>
+
+namespace STM {
+namespace Occ {
+
 class alignas(64) GlobalClock {
 public:
     GlobalClock() = delete;
@@ -19,3 +23,6 @@ public:
 private:
     inline static std::atomic<uint64_t> clock_{0};
 };
+
+}
+}

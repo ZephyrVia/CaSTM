@@ -9,6 +9,9 @@
 #include <vector>
 #include <atomic> 
 
+namespace STM {
+namespace Occ {
+
 struct RetryException : public std::exception {};
 
 
@@ -104,3 +107,5 @@ void Transaction::free(T* ptr) {
     ThreadHeap::deallocate(ptr);
 }
 
+} // namespace Occ
+} // namespace STM

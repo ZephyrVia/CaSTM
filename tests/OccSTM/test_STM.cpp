@@ -4,7 +4,9 @@
 #include <stdexcept>
 #include <algorithm>
 #include <random>
-#include "CaSTM/STM.hpp"
+#include "OccSTM/STM.hpp"
+
+using namespace STM::Occ;
 
 // ==========================================
 // 1. 基础功能测试：验证 load/store 和返回值逻辑
@@ -82,7 +84,7 @@ TEST(STMTest, ConcurrentCounter) {
         return tx.load(counter);
     });
 
-    // 如果没有 MVCC 冲突检测，这个值会小于 8000
+    // 如果没有 Occ 冲突检测，这个值会小于 8000
     EXPECT_EQ(final_val, NUM_THREADS * INC_PER_THREAD);
 }
 

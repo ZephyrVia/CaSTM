@@ -5,6 +5,8 @@
 #include "EBRManager/EBRManager.hpp"
 #include "VersionNode.hpp"
 
+namespace STM {
+namespace Occ {
 
 template<typename T>
 class TMVar {
@@ -128,3 +130,6 @@ void TMVar<T>::deleter(void* p) {
     // 这里的 delete 会触发：1. ~VersionNode() 2. VersionNode::operator delete()
     delete node;
 }
+
+} // namespace Occ
+} // namespace STM

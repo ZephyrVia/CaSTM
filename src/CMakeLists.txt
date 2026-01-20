@@ -19,7 +19,7 @@ add_library(mylib STATIC
     EBRManager/ThreadSlot.cpp
     EBRManager/ThreadSlotManager.cpp
 
-    CaSTM/Transaction.cpp
+    OccSTM/Transaction.cpp
 )
 
 # 头文件目录（公开给依赖 mylib 的目标）

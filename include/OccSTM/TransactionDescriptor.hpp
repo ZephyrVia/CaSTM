@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <vector>
 
+namespace STM {
+namespace Occ{
+
 struct ReadLogEntry {
     const void* tmvar_addr;
     const void* expected_head;
@@ -101,3 +104,6 @@ private:
 
     std::vector<void*> allocated_ptrs_; 
 };
+
+} // namespace Occ
+} // namespace STM

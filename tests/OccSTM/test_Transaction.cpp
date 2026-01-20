@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
-#include "CaSTM/Transaction.hpp"
+#include "OccSTM/Transaction.hpp"
 
 // 假设这些组件已经正确实现并链接
 // 如果 StripedLockTable 的实现包含在 .cpp 中，请确保链接
+
+using namespace STM::Occ;
 
 class TransactionTest : public ::testing::Test {
 protected:
@@ -63,7 +65,7 @@ TEST_F(TransactionTest, ReadYourOwnWrites) {
 }
 
 // ============================================================================
-// 2. MVCC 与隔离性测试
+// 2. Occ 与隔离性测试
 // ============================================================================
 
 // 测试：快照隔离 (只读事务应该读到事务开始时的旧值，即使由于并发有了新提交)
@@ -84,7 +86,7 @@ TEST_F(TransactionTest, SnapshotIsolation) {
     EXPECT_TRUE(tx_writer.commit()); // var 变成了 200
 
     // 3. Reader 现在才来读
-    // 根据 MVCC，它应该看不到 200，只能看到 100
+    // 根据 Occ，它应该看不到 200，只能看到 100
     int val = tx_reader.load(var);
     EXPECT_EQ(val, 100);
 

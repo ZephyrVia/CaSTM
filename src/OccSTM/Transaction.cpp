@@ -1,7 +1,10 @@
-#include "CaSTM/Transaction.hpp"
-#include "CaSTM/StripedLockTable.hpp"
+#include "OccSTM/Transaction.hpp"
+#include "OccSTM/StripedLockTable.hpp"
 #include <algorithm>
 #include <vector>
+
+namespace STM {
+namespace Occ {
 
 // 构造函数
 Transaction::Transaction(TransactionDescriptor* desc) : desc_(desc) {}
@@ -113,3 +116,6 @@ void Transaction::unlockWriteSet() {
     }
     locks.clear();
 }
+
+} // namespace Occ
+} // namespace STM

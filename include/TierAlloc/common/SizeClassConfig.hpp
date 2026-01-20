@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/GlobalConfig.hpp"
+#include "GlobalConfig.hpp"
 #include <cstddef>
 #include <cstdint>
 
