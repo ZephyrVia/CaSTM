@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <vector>
-#include <atomic> 
 
 namespace STM {
 namespace Occ {

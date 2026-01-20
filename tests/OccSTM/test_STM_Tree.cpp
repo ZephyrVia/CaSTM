@@ -5,7 +5,6 @@
 #include <random>
 #include <chrono>
 #include <iostream>
-#include <memory>
 
 // 确保包含你的 STM 头文件
 #include "OccSTM/STM.hpp"

@@ -3,7 +3,6 @@
 #include <vector>
 #include <stdexcept>
 #include <algorithm>
-#include <random>
 #include "OccSTM/STM.hpp"
 
 using namespace STM::Occ;
