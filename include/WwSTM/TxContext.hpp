@@ -26,7 +26,8 @@ private:
 
     TxDescriptor* my_desc_ = nullptr;
     uint64_t start_ts_ = 0;
-    bool is_valid_ = true;
+    bool is_valid_ = true;      // 事务描述符是否有效
+    bool in_epoch_ = false;     // 事务是否进入纪元，被EBRManager所管理
 
     std::vector<WriteLogEntry> write_set_;
 
@@ -36,16 +37,26 @@ public:
     }
 
     ~TxContext() {
-        if (!TxStatusHelper::is_committed(my_desc_->status)) {
-            abortImpl();
-        }
+        // 1. 先检查描述符是否存在
+        if (my_desc_) {
+            if (!TxStatusHelper::is_committed(my_desc_->status)) {
+                abortImpl();
+            }
+            else {
+                // 防御性编程：如果是 Committed 但没退休（极其罕见），退休它
+                retireDescriptor();
+                leaveEpoch();
+            }
+        } 
         else {
-            retireDescriptor();
+            leaveEpoch();
         }
     }
 
 
     void begin() {
+        enterEpoch();
+
         write_set_.clear();
         is_valid_ = true;
 
@@ -62,7 +73,8 @@ public:
         }
 
         if (write_set_.empty()){
-            retireDescriptor(); 
+            retireDescriptor();
+            leaveEpoch();
             return true;
         }
 
@@ -80,6 +92,7 @@ public:
 
         write_set_.clear();
         retireDescriptor();
+        leaveEpoch();
 
         return true;
     }
@@ -122,6 +135,7 @@ public:
 private:
     bool checkValidity() {
         if(!is_valid_) return false;
+        if(!my_desc_) return false; 
 
         if(my_desc_->status.load(std::memory_order_relaxed) == TxStatus::ABORTED) {
             is_valid_ = false;
@@ -129,7 +143,28 @@ private:
         return is_valid_;
     }
 
+    void enterEpoch() {
+        if (!in_epoch_) {
+            EBRManager::instance()->enter();
+            in_epoch_ = true;
+        }
+    }
+
+    void leaveEpoch() {
+        if (in_epoch_) {
+            EBRManager::instance()->leave();
+            in_epoch_ = false;
+        }
+    }
+
     void abortImpl() {
+        if (!my_desc_) {
+            is_valid_ = false;
+            write_set_.clear();
+            leaveEpoch();
+            return;
+        }
+
         TxStatusHelper::tryAbort(my_desc_->status);
         is_valid_ = false;
 
@@ -138,6 +173,7 @@ private:
         }
         write_set_.clear();
         retireDescriptor();
+        leaveEpoch();
     }
 
     void retireDescriptor() {

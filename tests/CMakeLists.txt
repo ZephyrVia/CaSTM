@@ -15,6 +15,8 @@ add_executable(run_tests
     OccSTM/test_Transaction.cpp
     OccSTM/test_STM.cpp
     OccSTM/test_STM_Tree.cpp
+    
+    WwSTM/test_TxContextSingleThread.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest
