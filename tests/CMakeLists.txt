@@ -18,6 +18,7 @@ add_executable(run_tests
     
     WwSTM/test_TxContextSingleThread.cpp
     WwSTM/test_TxContextMultiThread.cpp
+    WwSTM/test_STM_Tree.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest
