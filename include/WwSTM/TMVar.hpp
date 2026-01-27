@@ -132,8 +132,8 @@ public:
                 if(status == TxStatus::ACTIVE) {
                     std::printf("[T%zu] [WRITE-CONFLICT] Var:%p | Owner:%p is ACTIVE | Failing\n", tid, (void*)this, (void*)current->owner);
                     out_conflict = current->owner;
-                    delete my_new_node;
-                    delete my_record;
+                    // delete my_new_node;
+                    // delete my_record;
                     return nullptr;
                 }
                 
@@ -151,7 +151,22 @@ public:
             // --- CAS 尝试上位 ---
             RecordT* expected = current;
             if (record_ptr_.compare_exchange_strong(expected, my_record, std::memory_order_acq_rel)) {
-                std::printf("[T%zu] [WRITE-LOCKED] Var:%p | Record %p successfully acquired lock\n", tid, (void*)this, (void*)my_record);
+                // 【核心修复】ABA 检查 (Double Check Strategy)
+                // 此时我们要么从 nullptr 拿到了锁，要么从 Aborted Tx 抢到了锁。
+                // 无论哪种情况，old_node 必须与当前的 data_ptr_ 一致。
+                // 如果不一致，说明在我们 CAS 之前，有人提交了新数据。
+                NodeT* current_data = data_ptr_.load(std::memory_order_acquire);
+                if (current_data != stable_node) {
+                    std::printf("[T%zu] [WRITE-ABA] Var:%p | Stale Data! Stable:%p != Curr:%p | Backing off\n", 
+                        tid, (void*)this, (void*)stable_node, (void*)current_data);
+                    
+                    // 回滚：释放刚才抢到的锁
+                    record_ptr_.store(nullptr, std::memory_order_release);
+                    
+                    // 重新尝试循环 (或者你可以选择 abort)
+                    std::this_thread::yield();
+                    continue; 
+                }
 
                 if (current != nullptr) {
                     // EBRManager::instance()->retire(current->new_node);

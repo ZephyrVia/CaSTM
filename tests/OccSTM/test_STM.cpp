@@ -1,3 +1,5 @@
+#include <numeric>  // <--- 新增：用于 std::iota
+#include <random>  
 #include <gtest/gtest.h>
 #include <thread>
 #include <vector>
@@ -234,8 +236,8 @@ TEST(STMTest, ConcurrentBST) {
     STM::Var<TreeNode*> root(nullptr);
 
     // 配置：4线程，每线程插入 50 个节点
-    const int NUM_THREADS = 4;
-    const int ITEMS_PER_THREAD = 50; 
+    const int NUM_THREADS = 8;
+    const int ITEMS_PER_THREAD = 500; 
     
     std::vector<std::thread> workers;
 
@@ -328,3 +330,132 @@ TEST(STMTest, ConcurrentBST) {
     });
 }
 
+
+// ==========================================
+// 6. 高压随机化 BST 测试 (真正的压力测试)
+// ==========================================
+TEST(STMTest, ConcurrentBST_HighStress_Randomized) {
+    STM::Var<TreeNode*> root(nullptr);
+    
+    // 全局原子计数器，证明所有线程确实都跑完了
+    std::atomic<int> success_count(0);
+
+    // 配置：保持 16 线程
+    const int NUM_THREADS = 16;
+    // 增加数据量：每线程 10,000 -> 总共 160,000 节点
+    // 如果这还跑得太快，可以改到 50,000
+    const int ITEMS_PER_THREAD = 10000; 
+    const int TOTAL_ITEMS = NUM_THREADS * ITEMS_PER_THREAD;
+
+    std::cout << "[INFO] Preparing data for " << TOTAL_ITEMS << " items..." << std::endl;
+
+    std::vector<int> all_values(TOTAL_ITEMS);
+    std::iota(all_values.begin(), all_values.end(), 0);
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(all_values.begin(), all_values.end(), g);
+
+    std::vector<std::thread> workers;
+    workers.reserve(NUM_THREADS);
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    // 启动线程
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        int start_idx = i * ITEMS_PER_THREAD;
+        int end_idx = start_idx + ITEMS_PER_THREAD;
+
+        workers.emplace_back([&, start_idx, end_idx]() {
+            for (int k = start_idx; k < end_idx; ++k) {
+                int val_to_insert = all_values[k];
+
+                STM::atomically([&](Transaction& tx) {
+                    // 【人工增加冲突概率】
+                    // 在读取根节点后稍微空转一下，模拟复杂业务逻辑
+                    // 这会拉长事务窗口，使得别的线程更容易在这个期间修改数据，从而触发冲突回滚
+                    volatile int spinner = 0;
+                    for(int s=0; s<100; ++s) spinner++; 
+
+                    TreeNode* new_node = tx.alloc<TreeNode>(val_to_insert);
+                    TreeNode* curr = tx.load(root);
+                    
+                    if (curr == nullptr) {
+                        tx.store(root, new_node);
+                        return;
+                    }
+
+                    while (true) {
+                        if (val_to_insert < curr->val) {
+                            TreeNode* left = tx.load(curr->left);
+                            if (left == nullptr) {
+                                tx.store(curr->left, new_node);
+                                break;
+                            }
+                            curr = left;
+                        } else {
+                            TreeNode* right = tx.load(curr->right);
+                            if (right == nullptr) {
+                                tx.store(curr->right, new_node);
+                                break;
+                            }
+                            curr = right;
+                        }
+                    }
+                });
+                // 增加成功计数
+                success_count.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+
+    for (auto& t : workers) {
+        t.join();
+    }
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    
+    std::cout << "[INFO] All threads joined. Time taken: " << duration << " ms" << std::endl;
+    std::cout << "[INFO] Total successful inserts: " << success_count.load() << std::endl;
+
+    // ==========================================
+    // 验证阶段
+    // ==========================================
+    EXPECT_EQ(success_count.load(), TOTAL_ITEMS) << "Atomic counter mismatch!";
+
+    STM::atomically([&](Transaction& tx) {
+        std::vector<int> sorted_vals;
+        sorted_vals.reserve(TOTAL_ITEMS);
+        
+        TreeNode* root_node = tx.load(root);
+        inorder_traversal(tx, root_node, sorted_vals);
+
+        ASSERT_EQ(sorted_vals.size(), TOTAL_ITEMS) << "Tree size mismatch!";
+        
+        // 抽样检查有序性（全量检查在大数据下可能较慢，但对于 16万数据还行）
+        bool is_sorted = std::is_sorted(sorted_vals.begin(), sorted_vals.end());
+        EXPECT_TRUE(is_sorted) << "Tree structure corrupted!";
+    });
+
+    // ==========================================
+    // 内存清理
+    // ==========================================
+    // 注意：数据量大时，一次性事务清理可能会爆栈或导致事务过大，
+    // 但在测试环境中通常勉强可以接受。
+    std::vector<TreeNode*> nodes_to_delete;
+    nodes_to_delete.reserve(TOTAL_ITEMS);
+    
+    STM::atomically([&](Transaction& tx) {
+        TreeNode* root_node = tx.load(root);
+        collect_nodes(tx, root_node, nodes_to_delete);
+        tx.store(root, (TreeNode*)nullptr);
+    });
+    
+    // 批量释放
+    STM::atomically([&](Transaction& tx) {
+        for (auto* node : nodes_to_delete) {
+            tx.free(node);
+        }
+    });
+}
