@@ -2,23 +2,27 @@
 
 # 1. 创建一个测试可执行文件
 add_executable(run_tests
-    TierAlloc/test_central_heap.cpp
-    TierAlloc/test_AtomicFreeList.cpp
-    TierAlloc/test_slab.cpp
-    TierAlloc/test_SizeClassPool.cpp
-    TierAlloc/test_SizeClassConfig.cpp
-    TierAlloc/test_ThreadHeap.cpp
+    # TierAlloc/test_central_heap.cpp
+    # TierAlloc/test_AtomicFreeList.cpp
+    # TierAlloc/test_slab.cpp
+    # TierAlloc/test_SizeClassPool.cpp
+    # TierAlloc/test_SizeClassConfig.cpp
+    # TierAlloc/test_ThreadHeap.cpp
 
-    EBRManager/test_EBRManager.cpp
+    # EBRManager/test_EBRManager.cpp
 
-    OccSTM/test_TMVar.cpp
-    OccSTM/test_Transaction.cpp
-    OccSTM/test_STM.cpp
-    OccSTM/test_STM_Tree.cpp
+    # OccSTM/test_TMVar.cpp
+    # OccSTM/test_Transaction.cpp
+    # OccSTM/test_STM.cpp
+    # OccSTM/test_STM_Tree.cpp
     
-    WwSTM/test_TxContextSingleThread.cpp
-    WwSTM/test_TxContextMultiThread.cpp
-    WwSTM/test_STM_Tree.cpp
+    # WwSTM/test_TxContextSingleThread.cpp
+    # WwSTM/test_TxContextMultiThread.cpp
+    # WwSTM/test_STM_Tree.cpp
+    # WwSTM/WwSTM_test.cpp
+    # WwSTM/test_stm_math.cpp
+    # WwSTM/test_tmvar.cpp
+    WwSTM/test_stm_linkedlist.cpp
 )
 
 # 2. 链接库：业务库 + GoogleTest

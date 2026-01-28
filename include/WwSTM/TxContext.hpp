@@ -5,6 +5,7 @@
 #include <thread>
 #include <cstdio>
 #include <algorithm>
+#include <typeinfo> // 为了 typeid
 
 #include "GlobalClock.hpp"
 #include "TxDescriptor.hpp"
@@ -34,6 +35,7 @@ private:
 
     std::vector<ReadLogEntry> read_set_;
     std::vector<WriteLogEntry> write_set_;
+    std::vector<void*> allocated_ptrs_; 
 
     size_t get_tid() const {
         return std::hash<std::thread::id>{}(std::this_thread::get_id()) % 1000;
@@ -66,7 +68,6 @@ public:
         startNewTransaction();
     }
 
-    // 辅助函数：允许外部检查事务状态（这对修复 SimpleTree Bug 至关重要）
     bool isActive() const {
         return is_active_;
     }
@@ -98,16 +99,44 @@ public:
         return true;
     }
 
+    template<typename T, typename... Args>
+    TMVar<T>* alloc(Args&&... args) {
+        void* raw_mem = ThreadHeap::allocate(sizeof(TMVar<T>));
+        recordAllocation(raw_mem);
+        
+        // 日志：仅在开启调试时输出
+        STM_LOG("[TxAlloc] Addr=%p | Size=%zu | Type=%s\n", raw_mem, sizeof(T), typeid(T).name());
+
+        return new(raw_mem) TMVar<T>(std::forward<Args>(args)...);
+    }
+
     template<typename T>
-    T read(TMVar<T>& var) {
+    T read(TMVar<T>* var_ptr) {
+        if (!var_ptr) {
+            return T{}; 
+        }
         if (!ensureActive()) return T{};
 
+        TMVar<T>& var = *var_ptr;
         TMVarBase* var_base = static_cast<TMVarBase*>(&var);
+
+        // 1. 检查写集 (Read-your-own-writes)
+        for (const auto& entry : write_set_) {
+            if (entry.var == var_base) {
+                using RecordT = typename TMVar<T>::RecordT;
+                auto* record = static_cast<RecordT*>(entry.record_ptr);
+                return record->new_node->payload;
+            }
+        }
+
+        // 2. 检查读集 (避免重复验证)
         for (auto& entry : read_set_) {
             if (entry.var == var_base) {
                 return var.readProxy(my_desc_);
             }
         }
+
+        // [优化] 移除了此处最高频的 "Calling getDataVersion" 日志，这是性能杀手
 
         uint64_t v_pre = var.getDataVersion();
         T val = var.readProxy(my_desc_);
@@ -123,16 +152,16 @@ public:
     }
 
     template<typename T>
-    void write(TMVar<T>& var, const T& val) {
-        size_t tid = get_tid();
-        if (!ensureActive()) {
-            // std::printf("[T%zu] [WRITE-SKIP] Tx inactive, skipping write\n", tid);
-            return;
-        }
+    void write(TMVar<T>* var_ptr, const T& val) {
+        if (!var_ptr) return;
 
+        // size_t tid = get_tid(); // 仅在需要日志时使用
+        if (!ensureActive()) return;
+
+        TMVar<T>& var = *var_ptr;
         TMVarBase* var_base = static_cast<TMVarBase*>(&var);
         
-        // 1. 重入检查：如果已经持有锁，直接更新
+        // 1. 重入检查
         for (const auto& entry : write_set_) {
             if (entry.var == var_base) {
                 TxDescriptor* dummy = nullptr;
@@ -147,24 +176,20 @@ public:
             void* record = var.tryWriteAndGetRecord(my_desc_, &val, conflict_tx);
 
             if (record) {
-                // 【核心修复】获取锁后再次验证版本，防止 Lost Update
-                bool found_in_readset = false;
+                // 获取锁后再次验证版本
                 for (const auto& r_entry : read_set_) {
                     if (r_entry.var == var_base) {
-                        found_in_readset = true;
                         if (var.getDataVersion() != r_entry.read_ts) {
-                            std::printf("[T%zu] [WRITE-ABORT] Stale Lock! ReadVer:%lu != CurrVer:%lu\n", 
-                                        tid, r_entry.read_ts, var.getDataVersion());
-                            var.abortRestoreData(record); // 立即释放锁
+                            STM_LOG("[T%zu] [WRITE-ABORT] Stale Lock! ReadVer:%lu != CurrVer:%lu\n", 
+                                    get_tid(), r_entry.read_ts, var.getDataVersion());
+                            
+                            var.abortRestoreData(record); 
                             abortTransaction();
                             return;
                         }
                         break;
                     }
                 }
-                
-                // 如果是"盲写"（不在读集中），在你的树算法中是不应该发生的
-                // 这里我们暂且允许，但记录下来
                 
                 trackWrite(var_base, record);
                 return;
@@ -195,15 +220,21 @@ private:
         for (auto it = write_set_.rbegin(); it != write_set_.rend(); ++it) {
             it->var->abortRestoreData(it->record_ptr);
         }
+
+        for (void* ptr : allocated_ptrs_) {
+            ThreadHeap::deallocate(ptr);
+        }
         cleanupResources();
     }
 
     void cleanupResources() {
         read_set_.clear();
         write_set_.clear();
+        allocated_ptrs_.clear();
+
         is_active_ = false;
         if (my_desc_) {
-            // EBRManager::instance()->retire(my_desc_);
+            EBRManager::instance()->retire(my_desc_);
             my_desc_ = nullptr;
         }
         leaveEpoch();
@@ -221,6 +252,11 @@ private:
     void trackWrite(TMVarBase* var, void* record) {
         write_set_.push_back({var, record});
     }
+
+    void recordAllocation(void* ptr) {
+        allocated_ptrs_.push_back(ptr);
+    }
+
 
     bool validateReadSet() {
         for (const auto& entry : read_set_) {
