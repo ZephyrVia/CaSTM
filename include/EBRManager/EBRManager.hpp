@@ -55,8 +55,7 @@ void EBRManager::retire(T* ptr) {
     
     auto default_deleter = [](void* p) {
         T* typed_p   = static_cast<T*>(p);
-        typed_p->~T();
-        ThreadHeap::deallocate(typed_p);
+        delete typed_p;
     };
 
     this->retire(static_cast<void*>(ptr), default_deleter);

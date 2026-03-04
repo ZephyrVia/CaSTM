@@ -1,7 +1,7 @@
 #pragma once
 
 #include <atomic>
-#include "Tool/StampPtrPacker.hpp"
+#include <mutex>
 #include "EBRManager/GarbageNode.hpp"
 
 class LockFreeSingleLinkedList {
@@ -9,8 +9,8 @@ public:
     using Node = GarbageNode;
 
 private:
-    using Packer = StampPtrPacker<Node>;
-    typename Packer::atomic_type head_;
+    Node* head_;
+    mutable std::mutex mu_;
 
 public:
     LockFreeSingleLinkedList();

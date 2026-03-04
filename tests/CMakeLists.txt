@@ -18,10 +18,9 @@ add_executable(run_tests
     
     # WwSTM/test_TxContextSingleThread.cpp
     # WwSTM/test_TxContextMultiThread.cpp
-    # WwSTM/test_STM_Tree.cpp
-    # WwSTM/WwSTM_test.cpp
-    # WwSTM/test_stm_math.cpp
-    # WwSTM/test_tmvar.cpp
+    WwSTM/test_STM_Tree.cpp
+    WwSTM/test_stm_math.cpp
+    WwSTM/test_tmvar.cpp
     WwSTM/test_stm_linkedlist.cpp
 )
 

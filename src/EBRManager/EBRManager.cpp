@@ -88,7 +88,7 @@ void EBRManager::collectGarbage_(uint64_t epoch_to_collect) {
 void EBRManager::retire(void* ptr, void (*deleter)(void*)) {
     if(ptr == nullptr) return;
 
-    void* gnode_mem = ThreadHeap::allocate(sizeof(GarbageNode));
+    void* gnode_mem = ::operator new(sizeof(GarbageNode));
     GarbageNode* g_node = new(gnode_mem) GarbageNode(ptr, deleter);
 
     uint64_t current_epoch = global_epoch_.load(std::memory_order_relaxed);

@@ -3,10 +3,11 @@
 #include <atomic>
 #include <vector>
 #include <thread>
-#include <cstdio>
+#include <chrono>
 #include <algorithm>
-#include <typeinfo> // 为了 typeid
 
+#include "Config.hpp"
+#include "Logging.hpp"
 #include "GlobalClock.hpp"
 #include "TxDescriptor.hpp"
 #include "TxStatus.hpp"
@@ -37,10 +38,6 @@ private:
     std::vector<WriteLogEntry> write_set_;
     std::vector<void*> allocated_ptrs_; 
 
-    size_t get_tid() const {
-        return std::hash<std::thread::id>{}(std::this_thread::get_id()) % 1000;
-    }
-
 public:
     TxContext(const TxContext&) = delete;
     TxContext& operator=(const TxContext&) = delete;
@@ -69,13 +66,19 @@ public:
     }
 
     bool isActive() const {
-        return is_active_;
+        if (!is_active_ || !my_desc_) return false;
+        return my_desc_->status.load(std::memory_order_acquire) == TxStatus::ACTIVE;
     }
 
     bool commit() {
         if (!ensureActive()) return false;
 
         if (!validateReadSet()) {
+            abortTransaction();
+            return false;
+        }
+
+        if (!validateWriteSetOwnership()) {
             abortTransaction();
             return false;
         }
@@ -92,7 +95,11 @@ public:
 
         uint64_t commit_ts = GlobalClock::tick();
         for (auto& entry : write_set_) {
-            entry.var->commitReleaseRecord(commit_ts);
+            if (!entry.var->commitReleaseRecord(entry.record_ptr, commit_ts)) {
+                // 状态已 COMMITTED，无法回滚；返回失败让上层观察到异常并停止计数。
+                cleanupResources();
+                return false;
+            }
         }
 
         cleanupResources();
@@ -101,13 +108,18 @@ public:
 
     template<typename T, typename... Args>
     TMVar<T>* alloc(Args&&... args) {
+#if STM_WW_VERIFY_LOGIC_MODE
+        auto* obj = new TMVar<T>(std::forward<Args>(args)...);
+        recordAllocation(static_cast<void*>(obj));
+        WWSTM_DLOG("[TxAlloc] Addr=%p\n", (void*)obj);
+        return obj;
+#else
         void* raw_mem = ThreadHeap::allocate(sizeof(TMVar<T>));
         recordAllocation(raw_mem);
-        
-        // 日志：仅在开启调试时输出
-        STM_LOG("[TxAlloc] Addr=%p | Size=%zu | Type=%s\n", raw_mem, sizeof(T), typeid(T).name());
+        WWSTM_DLOG("[TxAlloc] Addr=%p\n", raw_mem);
 
         return new(raw_mem) TMVar<T>(std::forward<Args>(args)...);
+#endif
     }
 
     template<typename T>
@@ -135,8 +147,6 @@ public:
                 return var.readProxy(my_desc_);
             }
         }
-
-        // [优化] 移除了此处最高频的 "Calling getDataVersion" 日志，这是性能杀手
 
         uint64_t v_pre = var.getDataVersion();
         T val = var.readProxy(my_desc_);
@@ -171,7 +181,18 @@ public:
         }
 
         // 2. 尝试获取锁
+#if STM_WW_VERIFY_LOGIC_MODE
+        constexpr int kWriteRetryLimit = 1000000;
+#else
+        constexpr int kWriteRetryLimit = 10000;
+#endif
+        int retry_count = 0;
         while (true) {
+            if (++retry_count > kWriteRetryLimit) {
+                abortTransaction();
+                return;
+            }
+
             TxDescriptor* conflict_tx = nullptr;
             void* record = var.tryWriteAndGetRecord(my_desc_, &val, conflict_tx);
 
@@ -180,9 +201,6 @@ public:
                 for (const auto& r_entry : read_set_) {
                     if (r_entry.var == var_base) {
                         if (var.getDataVersion() != r_entry.read_ts) {
-                            STM_LOG("[T%zu] [WRITE-ABORT] Stale Lock! ReadVer:%lu != CurrVer:%lu\n", 
-                                    get_tid(), r_entry.read_ts, var.getDataVersion());
-                            
                             var.abortRestoreData(record); 
                             abortTransaction();
                             return;
@@ -198,7 +216,11 @@ public:
             resolveConflict(conflict_tx);
 
             if (!ensureActive()) return;
-            std::this_thread::yield();
+            if ((retry_count & 0x3F) == 0) {
+                std::this_thread::sleep_for(std::chrono::microseconds(1));
+            } else {
+                std::this_thread::yield();
+            }
         }
     }
 
@@ -222,7 +244,11 @@ private:
         }
 
         for (void* ptr : allocated_ptrs_) {
+#if STM_WW_VERIFY_LOGIC_MODE
+            delete static_cast<TMVarBase*>(ptr);
+#else
             ThreadHeap::deallocate(ptr);
+#endif
         }
         cleanupResources();
     }
@@ -234,7 +260,8 @@ private:
 
         is_active_ = false;
         if (my_desc_) {
-            EBRManager::instance()->retire(my_desc_);
+            // 临时策略：TxDescriptor 先不回收，优先保证并发正确性验证稳定。
+            // 原因：高并发压测下 descriptor 回收路径仍存在竞态风险。
             my_desc_ = nullptr;
         }
         leaveEpoch();
@@ -273,18 +300,35 @@ private:
         return true;
     }
 
+    bool validateWriteSetOwnership() {
+        for (const auto& entry : write_set_) {
+            if (!entry.var->ownsRecord(entry.record_ptr, my_desc_)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void enterEpoch() {
+#if STM_WW_VERIFY_LOGIC_MODE
+        in_epoch_ = true;
+#else
         if (!in_epoch_) {
             EBRManager::instance()->enter();
             in_epoch_ = true;
         }
+#endif
     }
 
     void leaveEpoch() {
+#if STM_WW_VERIFY_LOGIC_MODE
+        in_epoch_ = false;
+#else
         if (in_epoch_) {
             EBRManager::instance()->leave();
             in_epoch_ = false;
         }
+#endif
     }
 
     void resolveConflict(TxDescriptor* conflict_tx) {
@@ -292,9 +336,8 @@ private:
         TxStatus s = conflict_tx->status.load(std::memory_order_acquire);
         if (s == TxStatus::ABORTED) return;
         if (s == TxStatus::COMMITTED) {
-            while (conflict_tx->status.load(std::memory_order_acquire) == TxStatus::COMMITTED) {
-                std::this_thread::yield();
-            }
+            // COMMITTED 是终态，不应等待其“离开 COMMITTED”。
+            // 直接返回并让上层重试获取写锁即可。
             return;
         }
         uint64_t my_ts = start_ts_;

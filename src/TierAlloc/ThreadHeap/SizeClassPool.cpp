@@ -6,29 +6,18 @@
 #include <cassert>
 
 SizeClassPool::~SizeClassPool() {
-    auto& central = CentralHeap::GetInstance();
-
-    // [KNOWN LIMITATION / 已知缺陷]
-    // 警告：当前析构逻辑采取“暴力回收”策略。
-    // 当线程退出时，无论 Slab 中是否有对象仍被其他线程持有，都会强制将内存归还给 CentralHeap。
+    // 线程退出时不能强制归还 Slab：
+    // 其它线程可能仍持有这些对象（例如 EBR 延迟回收中的指针）。
+    // 若在这里回收 chunk，会导致跨线程 UAF / double free。
     //
-    // 风险点：如果线程 T2 仍持有由本线程(T1)分配的内存，T1 退出后，
-    //        T2 尝试访问或释放(free)该内存时会触发 Use-After-Free (SegFault)。
-    //
-    // 适用场景：仅适用于线程池架构（线程不频繁销毁）或无跨线程内存传递的简单场景。
-    
-    if(current_slab_ != nullptr) {
-        central.returnChunk(reinterpret_cast<void*>(current_slab_));
+    // 当前策略：仅断开本地链表，保留 chunk 到进程结束。
+    // 这是用空间换安全的保守策略，优先保证并发正确性。
+    current_slab_ = nullptr;
+    while (!partial_list_.empty()) {
+        partial_list_.pop_front();
     }
-
-    while(!partial_list_.empty()) {
-        Slab* slab = partial_list_.pop_front();
-        central.returnChunk(reinterpret_cast<void*>(slab));
-    }
-
-    while(!full_list_.empty()) {
-        Slab* slab = full_list_.pop_front();
-        central.returnChunk(reinterpret_cast<void*>(slab));
+    while (!full_list_.empty()) {
+        full_list_.pop_front();
     }
 }
 

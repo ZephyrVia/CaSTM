@@ -2,8 +2,6 @@
 
 #include <cstdint>
 #include <utility>
-#include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
-
 namespace STM {
 namespace Ww {
 
@@ -24,11 +22,11 @@ struct VersionNode {
     VersionNode& operator=(const VersionNode&) = delete;
 
     static void* operator new(size_t size) {
-        return ThreadHeap::allocate(size);
+        return ::operator new(size);
     }
 
     static void operator delete(void* p) {
-        ThreadHeap::deallocate(p);
+        ::operator delete(p);
     }
 
 };

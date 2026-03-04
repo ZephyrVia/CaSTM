@@ -4,8 +4,7 @@
 #include <cstdint>
 
 #include "TxStatus.hpp"
-#include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
-
+#include "TierAlloc/common/GlobalConfig.hpp"
 namespace STM {
 namespace Ww {
 
@@ -28,11 +27,11 @@ struct alignas(kCacheLineSize) TxDescriptor  {
     TxDescriptor& operator=(TxDescriptor&&) = delete;
 
     static void* operator new(size_t size) {
-        return ThreadHeap::allocate(size);
+        return ::operator new(size);
     }
 
     static void operator delete(void* p) {
-        ThreadHeap::deallocate(p);
+        ::operator delete(p);
     }
 
 };

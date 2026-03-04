@@ -4,7 +4,6 @@
 #include <utility>
 #include <variant>
 #include "TxDescriptor.hpp" 
-#include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
 #include "WwSTM/VersionNode.hpp"
 
 namespace STM {
@@ -27,11 +26,11 @@ struct WriteRecord {
     WriteRecord& operator=(const WriteRecord&) = delete;
 
     static void* operator new(size_t size) {
-        return ThreadHeap::allocate(size);
+        return ::operator new(size);
     }
 
     static void operator delete(void* p) {
-        ThreadHeap::deallocate(p);
+        ::operator delete(p);
     }
 };
 

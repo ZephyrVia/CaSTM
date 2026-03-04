@@ -3,7 +3,6 @@
 #include <mutex>
 
 #include "EBRManager/GarbageNode.hpp"
-#include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
 
 /**
  * @class GarbageCollector
@@ -50,8 +49,8 @@ inline void GarbageCollector::collect(Node* garbage_list_head) {
         // 步骤 1: 显式调用析构函数，清理对象状态
         current->~Node();
 
-        // 步骤 2: 使用 ThreadHeap 释放原始内存
-        ThreadHeap::deallocate(current);
+        // 步骤 2: 使用系统堆释放 GarbageNode 元数据
+        ::operator delete(current);
 
         current = next; // 移动到下一个节点
     }
