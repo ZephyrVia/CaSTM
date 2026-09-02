@@ -117,7 +117,8 @@ TEST_F(OSTMTest, WoundWait_OldKillsYoung) {
     // 注意：TxContext 构造时就获取时间戳。
     TxContext* tx_young = new TxContext(); 
     
-    // 强制 sleep 确保时间戳推进
+    // 注：GlobalClock::now() 只读不推进（仅 commit 的 tick() 推进），
+    // 两个 TxContext 仍可能拿到相同 start_ts，平局由 creation_serial 仲裁：先创建=更老。
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
     
     // 创建 Tx_Old ??? 等等，Wound-Wait 是 StartTS 越小越老。

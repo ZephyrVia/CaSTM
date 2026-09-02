@@ -264,7 +264,9 @@ private:
         uint64_t my_ts = start_ts_;
         uint64_t enemy_ts = conflict_tx->start_ts;
         bool i_am_older = (my_ts < enemy_ts);
-        if (my_ts == enemy_ts) i_am_older = (my_desc_ < conflict_tx);
+        // 同一 tick 内构造的事务 start_ts 相同：用创建序号仲裁（先创建=更老）。
+        // 堆地址顺序随分配历史漂移，会让裁决结果依赖测试运行顺序。
+        if (my_ts == enemy_ts) i_am_older = (my_desc_->creation_serial < conflict_tx->creation_serial);
 
         if (i_am_older) {
             if (TxStatusHelper::tryAbort(conflict_tx->status)) return;
