@@ -33,6 +33,11 @@ public:
     [[nodiscard]] bool isFull() const;
     [[nodiscard]] bool isEmpty() const;
 
+#ifdef TIERALLOC_CANARY
+    // chunk 归还前的终检：所有块必须处于 free 状态，并从全局活跃注册表摘除。
+    void canaryPrepareReturn_();
+#endif
+
     Slab* prev = nullptr;
     Slab* next = nullptr;
 
@@ -52,5 +57,18 @@ private:
     uint32_t max_block_count_ = 0;
     uint32_t allocated_count_ = 0;
 
-    alignas(kCacheLineSize) AtomicFreeList remote_free_list_{}; 
+#ifdef TIERALLOC_CANARY
+    // 调试金丝雀：块状态 side-bitmap（0=free, 1=allocated, 2=remote-freed）
+    // 不放在块内，因为空闲块首字被 freelist 链指针占用。
+    uint8_t* canary_states_ = nullptr;
+    size_t canaryIndexOf_(void* ptr) const;
+    void canaryMarkAlloc_(void* ptr, const char* site);
+    void canaryMarkFreeLocal_(void* ptr);
+    void canaryMarkFreeRemote_(void* ptr);
+    void canaryMarkReclaim_(void* ptr);
+    void canaryPoison_(void* ptr);
+    void canaryCheckPoison_(void* ptr, const char* site);
+#endif
+
+    alignas(kCacheLineSize) AtomicFreeList remote_free_list_{};
 };
