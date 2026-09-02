@@ -156,6 +156,18 @@ public:
                 return nullptr;
             }
 
+            // 击伤检查：本事务已被杀则立刻退出。若 my_record 尚挂在变量上，
+            // 保持安装状态（owner=ABORTED），交给后续写者按偷窃协议回收；
+            // 未安装则安全删除，避免继续操作一个可能已被判死的事务。
+            if (tx->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+                out_conflict = nullptr;
+                if (record_ptr_.load(std::memory_order_acquire) != my_record) {
+                    delete my_new_node;
+                    delete my_record;
+                }
+                return nullptr;
+            }
+
             RecordT* current = record_ptr_.load(std::memory_order_acquire);
             NodeT* stable_node = data_ptr_.load(std::memory_order_acquire);
             
@@ -194,9 +206,17 @@ public:
             if (record_ptr_.compare_exchange_strong(expected, my_record, std::memory_order_acq_rel)) {
                 NodeT* current_data = data_ptr_.load(std::memory_order_acquire);
                 if (current_data != stable_node) {
-                    record_ptr_.store(nullptr, std::memory_order_release);
-                    std::this_thread::yield();
-                    continue; 
+                    // 稳定性失败，卸载重试。必须用 CAS 只卸“仍属于自己”的记录：
+                    // 无条件 store 会误清其他线程刚装上的锁。CAS 失败说明本事务
+                    // 已被击伤且记录被偷走——对方已按偷窃协议退休本记录，
+                    // 所有权已转移，此后绝不能再 delete/复用 my_record。
+                    RecordT* mine = my_record;
+                    if (record_ptr_.compare_exchange_strong(mine, nullptr, std::memory_order_acq_rel)) {
+                        std::this_thread::yield();
+                        continue;
+                    }
+                    out_conflict = nullptr;
+                    return nullptr;
                 }
 
                 if (current != nullptr) {
