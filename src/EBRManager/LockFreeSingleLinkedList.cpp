@@ -3,7 +3,7 @@
 
 LockFreeSingleLinkedList::LockFreeSingleLinkedList() {
     head_ = nullptr;
-}  
+}
 
 void LockFreeSingleLinkedList::pushNode(Node* new_node) {
     if (!new_node) return;
