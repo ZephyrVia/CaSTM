@@ -25,15 +25,19 @@ struct TrackedObject {
         alive_count.fetch_sub(1, std::memory_order_relaxed);
     }
 
-    // 【工厂方法】确保使用 ThreadHeap 分配内存
-    // 因为 EBRManager::retire<T> 内部会调用 ThreadHeap::deallocate
+    // 【工厂方法】确保使用 ThreadHeap 分配内存。
+    // 约定：走 EBRManager::retire<T> 默认 deleter 的类型若使用 ThreadHeap，
+    // 必须提供类内 operator new/delete（与 Occ 的 VersionNode 相同），
+    // delete 才能正确分派回 ThreadHeap::deallocate。
+    static void* operator new(size_t size) {
+        return ThreadHeap::allocate(size);
+    }
+    static void operator delete(void* p) {
+        ThreadHeap::deallocate(p);
+    }
+
     static TrackedObject* create(int v) {
-        // 1. 从 ThreadHeap 申请裸内存
-        void* mem = ThreadHeap::allocate(sizeof(TrackedObject));
-        if (!mem) throw std::bad_alloc();
-        
-        // 2. 在该内存上构造对象 (Placement New)
-        return new(mem) TrackedObject(v);
+        return new TrackedObject(v);
     }
 };
 

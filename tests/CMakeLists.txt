@@ -9,7 +9,7 @@ add_executable(run_tests
     # TierAlloc/test_SizeClassConfig.cpp
     # TierAlloc/test_ThreadHeap.cpp
 
-    # EBRManager/test_EBRManager.cpp
+    EBRManager/test_EBRManager.cpp
 
     # OccSTM/test_TMVar.cpp
     # OccSTM/test_Transaction.cpp
