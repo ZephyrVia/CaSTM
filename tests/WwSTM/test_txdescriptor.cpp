@@ -312,7 +312,11 @@ TEST(TxDescriptorTest, TransactionDescriptorChurnReclaimsThroughEbr) {
     constexpr size_t kTransactionCount = 2000;
     for (size_t i = 0; i < kTransactionCount; ++i) {
         TxContext tx;
-        ASSERT_TRUE(tx.commit());
+        if ((i & 1u) == 0) {
+            ASSERT_TRUE(tx.commit());
+        }
+        // Odd iterations intentionally leave an ACTIVE transaction to its
+        // destructor, covering the descriptor abort-cleanup path as well.
     }
 
     for (int i = 0;
