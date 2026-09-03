@@ -141,10 +141,23 @@ public:
             }
         }
 
-        // 2. 检查读集 (避免重复验证)
+        // 2. 检查读集 (重复读快照校验)
+        // 重复读必须仍处于首次读的版本，否则按冲突 abort。
+        // 不更新 read_ts，同一事务已基于旧版本建立快照。
         for (auto& entry : read_set_) {
             if (entry.var == var_base) {
-                return var.readProxy(my_desc_);
+                uint64_t v_pre = var.getDataVersion();
+                if (v_pre != entry.read_ts) {
+                    abortTransaction();
+                    return T{};
+                }
+                T val = var.readProxy(my_desc_);
+                uint64_t v_post = var.getDataVersion();
+                if (v_post != entry.read_ts) {
+                    abortTransaction();
+                    return T{};
+                }
+                return val;
             }
         }
 

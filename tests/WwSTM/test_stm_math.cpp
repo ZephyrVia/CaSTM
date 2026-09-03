@@ -105,3 +105,25 @@ TEST_F(TxContextTest, TwoThreadsConcurrentIncrement) {
     // 在测试中，程序结束时 ThreadHeap 会清理。
 }
 
+
+// 测试: 同一事务重复读同一变量，期间 committed version 前进 → 必须按冲突 abort
+// 回归背景：read() 的读集去重分支曾是裸 return readProxy()，无任何版本保护，
+// 期间版本变化时会把新值交给已基于旧版本建立快照的事务。
+TEST_F(TxContextTest, RepeatReadVersionChangeAborts) {
+    TMVar<int> var(0);
+
+    TxContext tx1;
+    // 首读：读集记录当前版本
+    EXPECT_EQ(tx1.read(&var), 0);
+
+    {
+        TxContext tx2;
+        tx2.write(&var, 5);
+        // 期间 committed version 前进
+        ASSERT_TRUE(tx2.commit());
+    }
+
+    // 重复读：版本已不同于首读，必须按冲突 abort
+    tx1.read(&var);
+    EXPECT_FALSE(tx1.isActive());
+}

@@ -105,7 +105,13 @@ public:
             return record->new_node->payload;
         } 
         else {
-            return record->old_node->payload;
+            // ACTIVE / ABORTED：统一读 data_ptr_（stable committed 权威）。
+            // 实验证实（探针 branch=13）：持有者活跃期间 old_node 也可能落后于
+            // data_ptr_，从它取值会拼出不存在的 (version, value) 组合导致丢失更新；
+            // 正常态下 old_node == data_ptr_，两者取值一致，仅坏窗口有别。
+            // old_node 仅作为写路径的 undo/回收元数据保留。
+            NodeT* stable = data_ptr_.load(std::memory_order_acquire);
+            return stable->payload;
         }
     }
 

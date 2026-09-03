@@ -221,3 +221,57 @@ TEST_F(TMVarTest, StealAbortedLock) {
     ASSERT_EQ(var.getDataVersion(), 210);
 }
 
+
+// 测试: ABORTED 记录在位时，普通读者必须读 stable data_ptr_，而非 record->old_node
+// 回归背景（2026-09 取证）：ABORTED 记录的 old_node 是安装时刻的快照，可能落后于
+// data_ptr_。readProxy 曾从 old_node 取值，拼出不存在的 (version, value) 组合
+// （v_pre=1943, val=1942），后续校验全部放行 → 丢失更新；old_node 被回收后
+// 还会悬垂解引用。本测试用白盒手段直接构造"old_node 落后"的中间态。
+TEST_F(TMVarTest, AbortedRecordReadUsesStableData) {
+    TMVar<int> var(10);
+
+    // 1. 安装一个写记录（owner 先 ACTIVE）
+    TxDescriptor tx_dead(100);
+    int draft_val = 999;
+    TxDescriptor* c = nullptr;
+    auto* rec = var.tryWriteAndGetRecord(&tx_dead, &draft_val, c);
+    ASSERT_NE(rec, nullptr);
+
+    // 2. owner 被击伤（wound），记录停留在"待偷窃"中间态
+    tx_dead.status.store(TxStatus::ABORTED, std::memory_order_release);
+
+    // 3. 白盒模拟病灶：old_node 指向一个"过期"节点（伪造落后版本）
+    auto* stale_fake = new detail::VersionNode<int>(0, 777);
+    static_cast<detail::WriteRecord<int>*>(rec)->old_node = stale_fake;
+
+    // 4. 读者必须取 stable data_ptr_ 的值（10），绝不能是 old_node 的 777
+    TxDescriptor tx_reader(200);
+    ASSERT_EQ(var.readProxy(&tx_reader), 10) << "读值必须来自 data_ptr_，而非 old_node";
+
+    delete stale_fake;
+}
+
+// 测试: ACTIVE 记录在位时，读者同样必须读 stable data_ptr_，而非 record->old_node
+// 回归背景：曾按"ACTIVE 期间 old_node==data 恒成立"恢复 ACTIVE -> old_node，
+// mode=0 计数测试随即复现 7/200 丢失更新，探针定位偏斜读来自 ACTIVE 分支
+// (v_pre=1155, val=1154, old_node 版本 1154)，证实该不变式在真实交错下不成立。
+TEST_F(TMVarTest, ActiveRecordReadIgnoresStaleOldNode) {
+    TMVar<int> var(10);
+
+    // 1. 安装一个写记录，owner 保持 ACTIVE（模拟持有者正在写的中间态）
+    TxDescriptor tx_active(100);
+    int draft_val = 999;
+    TxDescriptor* c = nullptr;
+    auto* rec = var.tryWriteAndGetRecord(&tx_active, &draft_val, c);
+    ASSERT_NE(rec, nullptr);
+
+    // 2. 白盒模拟病灶：old_node 指向一个"过期"节点
+    auto* stale_fake = new detail::VersionNode<int>(0, 777);
+    static_cast<detail::WriteRecord<int>*>(rec)->old_node = stale_fake;
+
+    // 3. 读者必须取 stable data_ptr_ 的值（10），而不是 old_node 的 777
+    TxDescriptor tx_reader(200);
+    ASSERT_EQ(var.readProxy(&tx_reader), 10) << "读值必须来自 data_ptr_，而非 old_node";
+
+    delete stale_fake;
+}
