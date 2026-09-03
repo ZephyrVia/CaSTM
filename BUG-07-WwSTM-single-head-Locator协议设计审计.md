@@ -1,10 +1,12 @@
 # BUG-07：WwSTM single-head Locator 协议与实现
 
-状态：Commit B 已实现（待提交）
+状态：Commit B 已实现
 
 审计基线：`68ed73f docs: record single-head Commit A result`
 
 Commit A：`72ec885 refactor(wwstm): introduce single-head locator state`
+
+Commit B：`91c32c0 refactor(wwstm): make descriptor commit the transaction linearization point`
 
 本文件保留前期设计审计，并记录 Commit A 到 Commit B 的协议差异、实际实现与验收结果。
 
