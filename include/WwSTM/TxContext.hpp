@@ -22,6 +22,7 @@ private:
     struct ReadLogEntry {
         TMVarBase* var;
         uint64_t read_ts;
+        const void* node;
     };
 
     struct WriteLogEntry {
@@ -132,12 +133,11 @@ public:
         TMVar<T>& var = *var_ptr;
         TMVarBase* var_base = static_cast<TMVarBase*>(&var);
 
-        // 1. 检查写集 (Read-your-own-writes)
+        // 1. 检查写集 (Read-your-own-writes).  The concrete Record type is
+        // deliberately hidden behind TMVar::readSnapshot().
         for (const auto& entry : write_set_) {
             if (entry.var == var_base) {
-                using RecordT = typename TMVar<T>::RecordT;
-                auto* record = static_cast<RecordT*>(entry.record_ptr);
-                return record->new_node->payload;
+                return var.readSnapshot(my_desc_).value;
             }
         }
 
@@ -146,32 +146,18 @@ public:
         // 不更新 read_ts，同一事务已基于旧版本建立快照。
         for (auto& entry : read_set_) {
             if (entry.var == var_base) {
-                uint64_t v_pre = var.getDataVersion();
-                if (v_pre != entry.read_ts) {
+                auto snapshot = var.readSnapshot(my_desc_);
+                if (snapshot.node != entry.node || snapshot.version != entry.read_ts) {
                     abortTransaction();
                     return T{};
                 }
-                T val = var.readProxy(my_desc_);
-                uint64_t v_post = var.getDataVersion();
-                if (v_post != entry.read_ts) {
-                    abortTransaction();
-                    return T{};
-                }
-                return val;
+                return snapshot.value;
             }
         }
 
-        uint64_t v_pre = var.getDataVersion();
-        T val = var.readProxy(my_desc_);
-        uint64_t v_post = var.getDataVersion();
-
-        if (v_pre != v_post) {
-            abortTransaction();
-            return T{};
-        }
-
-        read_set_.push_back({var_base, v_pre});
-        return val;
+        auto snapshot = var.readSnapshot(my_desc_);
+        read_set_.push_back({var_base, snapshot.version, snapshot.node});
+        return snapshot.value;
     }
 
     template<typename T>
@@ -213,7 +199,9 @@ public:
                 // 获取锁后再次验证版本
                 for (const auto& r_entry : read_set_) {
                     if (r_entry.var == var_base) {
-                        if (var.getDataVersion() != r_entry.read_ts) {
+                        if (!var.validateReadBeforeWrite(record,
+                                                         r_entry.node,
+                                                         r_entry.read_ts)) {
                             var.abortRestoreData(record); 
                             abortTransaction();
                             return;
@@ -308,7 +296,11 @@ private:
                 }
             }
             if (locked_by_me) continue;
-            if (entry.var->getDataVersion() != entry.read_ts) return false;
+            if (!entry.var->validateReadSnapshot(entry.node,
+                                                 entry.read_ts,
+                                                 my_desc_)) {
+                return false;
+            }
         }
         return true;
     }

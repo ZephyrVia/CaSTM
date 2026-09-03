@@ -62,7 +62,7 @@ published once
 
 测试位于 [`tests/WwSTM/test_tmvar.cpp`](tests/WwSTM/test_tmvar.cpp)：
 
-- `PublishedWriteRecordRetiresAfterStabilityRollback`：用 phase gate 精确排列
+- `PublishedWriteRecordRetiresAfterHelper`：用 phase gate 精确排列
   `INSTALL → reader load → stable 改变 → rollback`。reader 活跃期间析构计数为 0，
   离开并经过 grace period 后为 1。
 - `PublishedWriteRecordRetiredExactlyOnce`：同一已发布记录重复执行 abort 清理，确认
