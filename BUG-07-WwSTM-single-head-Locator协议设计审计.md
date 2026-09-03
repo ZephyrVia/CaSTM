@@ -1,6 +1,6 @@
 # BUG-07：WwSTM single-head Locator 协议与实现
 
-状态：Commit B 已实现
+状态：Commit B 已实现（TxDescriptor 生命周期与对齐另见 BUG-08）
 
 审计基线：`68ed73f docs: record single-head Commit A result`
 
@@ -9,6 +9,8 @@ Commit A：`72ec885 refactor(wwstm): introduce single-head locator state`
 Commit B：`91c32c0 refactor(wwstm): make descriptor commit the transaction linearization point`
 
 本文件保留前期设计审计，并记录 Commit A 到 Commit B 的协议差异、实际实现与验收结果。
+Descriptor 的独立生命周期/对齐问题已拆到 [BUG-08](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md)，
+避免把协议正确性和对象回收根因混在同一份记录里。
 
 ## 结论
 
@@ -137,9 +139,9 @@ single-head 下 head 是唯一根引用：
 `retire()` 仍然只是延迟入队，不是立即析构。事务 owner、reader 和 helper 都必须在
 EBR 保护期内使用其已经加载的裸指针；离开 EBR 后不能保存旧指针继续使用。
 
-TxDescriptor 当前有意不回收，因此 Record 的 owner 指针暂时仍有稳定生命周期。后续
-若处理 descriptor 回收，必须把 descriptor 引用纳入新的生命周期协议，本轮不应顺手
-解决。
+历史审计阶段 TxDescriptor 曾有意不回收，因此 Record 的 owner 指针暂时仍有稳定
+生命周期。后续已将该独立问题转入 BUG-08，并按 EBR 证明补上 Descriptor 回收；本
+文件只保留当时的审计背景。
 
 事务写集可能在 Record 已被 helper 展平后仍短暂保存该 Record 的原始 token，直到事务
 清理写集。Commit A 的提交/回滚兼容入口会先用 `head_` 比较 token；若当前 head 已不是
@@ -277,7 +279,7 @@ snapshot 同源”的测试，不能继续依赖篡改 immutable Locator。
 - EBR 算法和 allocator；
 - Wound-Wait 的年龄策略；
 - OccSTM；
-- TxDescriptor 回收；
+- TxDescriptor 回收（已拆分到 BUG-08）；
 - benchmark 和性能优化。
 
 前置审计的结论是“可以实施，但需按上述接口边界实施”，不是直接接受当时
@@ -339,5 +341,6 @@ UBSan 仍会报告项目既有的 `TxDescriptor alignas(64)` 对齐问题；本 
 | ASan+UBSan（`detect_leaks=0`）全量 | 32 项通过；无 UAF、double-free、invalid-free |
 | no-hooks（`STM_WW_TEST_HOOKS=0`）生产头文件编译 | 通过 |
 
-已知范围外问题仍不变：TxDescriptor 回收/alignment、EBR/allocator 的后续性能与精确
-回收、Wound-Wait 年龄策略、benchmark 和 OccSTM。本提交没有改动这些部分。
+已知范围外问题仍不变：EBR/allocator 的后续性能与精确线程资源回收、Wound-Wait
+年龄策略、benchmark 和 OccSTM。TxDescriptor 回收/alignment 已由 BUG-08 独立处理，
+不属于 Commit B 的协议提交。

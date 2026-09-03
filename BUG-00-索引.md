@@ -12,5 +12,6 @@
 | BUG-05 | [Wound-Wait 平局裁决顺序依赖](BUG-05-WoundWait平局裁决顺序依赖.md) | main 谱系已修复，bug 分支暂缓 | `8b3cdf5` |
 | BUG-06 | [WwSTM 版本-值偏斜导致丢失更新](BUG-06-WwSTM版本值偏斜丢失更新.md) | 已修复 | `ffc7f14` |
 | BUG-07 | [WwSTM single-head Locator 协议与实现](BUG-07-WwSTM-single-head-Locator协议设计审计.md) | Commit B 已实现 | `91c32c0` |
+| BUG-08 | [WwSTM TxDescriptor 生命周期与对齐](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md) | 已修复 | `ba1e308`, `0247b1b`, `c5973c2` |
 
 最后更新：2026-09
