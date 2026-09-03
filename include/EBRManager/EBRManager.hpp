@@ -52,11 +52,14 @@ void EBRManager::retire(T* ptr) {
     if(ptr == nullptr){
         return;
     }
-    
+
+    // 约定：默认 deleter 使用 delete，依赖类型自身的 operator delete 分派
+    // （Occ 的 VersionNode → ThreadHeap；Ww 的 VersionNode/WriteRecord → 系统堆）。
+    // 从 ThreadHeap 裸分配（ThreadHeap::allocate + placement new）的对象
+    // 必须提供类内 operator new/delete，否则需显式传 deleter。
     auto default_deleter = [](void* p) {
         T* typed_p   = static_cast<T*>(p);
-        typed_p->~T();
-        ThreadHeap::deallocate(typed_p);
+        delete typed_p;
     };
 
     this->retire(static_cast<void*>(ptr), default_deleter);

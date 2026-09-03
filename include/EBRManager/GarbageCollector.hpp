@@ -3,15 +3,15 @@
 #include <mutex>
 
 #include "EBRManager/GarbageNode.hpp"
-#include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
 
 /**
  * @class GarbageCollector
  * @brief 负责安全地回收和释放由 LockFreeSingleLinkedList 提供的垃圾节点链表。
  *
  * 该类提供了一个线程安全的 `collect` 方法，它接收一个垃圾链表的头节点，
- * 然后在互斥锁的保护下，遍历整个链表，为每个节点调用析构函数并使用
- * ThreadHeap 释放其内存。
+ * 然后在互斥锁的保护下，遍历整个链表，为每个节点调用析构函数。
+ * 注意：GarbageNode 元数据使用系统堆（与 EBRManager::retire 的
+ * ::operator new 分配配对），回收账本不依赖被它管理的 ThreadHeap。
  */
 class GarbageCollector {
 public:
@@ -50,8 +50,9 @@ inline void GarbageCollector::collect(Node* garbage_list_head) {
         // 步骤 1: 显式调用析构函数，清理对象状态
         current->~Node();
 
-        // 步骤 2: 使用 ThreadHeap 释放原始内存
-        ThreadHeap::deallocate(current);
+        // 步骤 2: 使用系统堆释放 GarbageNode 元数据
+        // （与 EBRManager::retire 中的 ::operator new 配对）
+        ::operator delete(current);
 
         current = next; // 移动到下一个节点
     }

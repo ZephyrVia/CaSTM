@@ -20,9 +20,17 @@ ThreadSlot* EBRManager::getLocalSlot_() {
 void EBRManager::enter() {
     ThreadSlot* slot = getLocalSlot_();
     if (slot) {
-        uint64_t current_epoch = global_epoch_.load(std::memory_order_relaxed);
-        // 调用新的、单一的、原子化的方法
-        slot->enter(current_epoch);
+        // 登记-复核循环：在“读取全局纪元”与“登记到槽位”两步之间，
+        // 其他线程可能连续推进纪元并完成回收。若以过期纪元登记，
+        // 本线程会错过它本应挡住的推进。复核并前移到最新纪元
+        // （前移只发生在本线程任何读取之前，方向安全）。
+        for (int i = 0; i < 4; ++i) {
+            uint64_t current_epoch = global_epoch_.load(std::memory_order_acquire);
+            slot->enter(current_epoch);
+            uint64_t now = global_epoch_.load(std::memory_order_acquire);
+            if (now == current_epoch) break;
+            slot->setEpoch(now);
+        }
     }
 }
 
@@ -88,9 +96,15 @@ void EBRManager::collectGarbage_(uint64_t epoch_to_collect) {
 void EBRManager::retire(void* ptr, void (*deleter)(void*)) {
     if(ptr == nullptr) return;
 
-    void* gnode_mem = ThreadHeap::allocate(sizeof(GarbageNode));
+    // GarbageNode 是 EBR 自己的回收账本，必须放在系统堆：
+    // 若从 ThreadHeap 分配，节点会随分配线程的 slab 生命周期漂移，
+    // 正是“回收账本被复用内存覆盖”的通道。
+    void* gnode_mem = ::operator new(sizeof(GarbageNode));
     GarbageNode* g_node = new(gnode_mem) GarbageNode(ptr, deleter);
 
-    uint64_t current_epoch = global_epoch_.load(std::memory_order_relaxed);
-    this->garbage_lists_[current_epoch % kNumEpochLists].pushNode(g_node);
+    // 退休发生时以全局纪元作为回收账本的时间戳，而不是使用本线程
+    // announced epoch。线程可能仍停留在 E，但全局纪元已经推进到 E+1；
+    // 若把对象放入 E 桶，collect(G-2) 会在 G=E+2 时提前回收它。
+    uint64_t retire_epoch = global_epoch_.load(std::memory_order_acquire);
+    this->garbage_lists_[retire_epoch % kNumEpochLists].pushNode(g_node);
 }

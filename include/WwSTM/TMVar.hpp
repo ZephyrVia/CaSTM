@@ -1,12 +1,16 @@
 #pragma once
 
 #include <atomic>
+#include <cassert>
 #include <cstdint>
-#include <type_traits>
+#include <cstdio>
+#include <mutex>
 #include <thread>
-#include <functional> 
-#include <cstdio> // 必须包含用于 printf
+#include <type_traits>
+#include <utility>
 
+#include "Config.hpp"
+#include "Logging.hpp"
 #include "TaggedPtr.hpp"
 #include "VersionNode.hpp"
 #include "WriteRecord.hpp"
@@ -17,44 +21,195 @@
 namespace STM {
 namespace Ww {
 
-// 为了让 TxContext::write_set_ 可以通过 std::vector<TMVarBase*> 统一存储不同类型的变量
+template<typename T>
+struct ReadSnapshot {
+    using NodeT = detail::VersionNode<T>;
+
+    T value;
+    uint64_t version;
+    const NodeT* node;
+};
+
 struct TMVarBase {
     virtual ~TMVarBase() = default;
 
-    virtual void commitReleaseRecord(const uint64_t commit_ts) = 0;
+    virtual bool validateForCommit(void* saved_record_ptr,
+                                   const TxDescriptor* owner) const = 0;
+    virtual bool prepareCommit(void* saved_record_ptr,
+                               TxDescriptor* owner,
+                               uint64_t commit_ts) = 0;
+    virtual void helpComplete(void* saved_record_ptr) = 0;
     virtual void abortRestoreData(void* saved_record_ptr) = 0;
+    virtual bool validateReadSnapshot(const void* node_ptr,
+                                      uint64_t version,
+                                      const TxDescriptor* tx) const = 0;
+    virtual bool validateReadBeforeWrite(void* record_ptr,
+                                         const void* node_ptr,
+                                         uint64_t version) const = 0;
     virtual uint64_t getDataVersion() const = 0;
 };
-
 
 template <typename T>
 class TMVar : public TMVarBase {
 public:
     using NodeT = detail::VersionNode<T>;
     using RecordT = detail::WriteRecord<T>;
+    using HeadWord = uintptr_t;
+
+#if STM_WW_TEST_HOOKS
+    using ReadSnapshotHook = void (*)(TMVar<T>&);
+#endif
 
 private:
-    std::atomic<NodeT*> data_ptr_;
-    std::atomic<RecordT*> record_ptr_;
+    // The only shared state entry.  Bit 0 == 0 means VersionNode, bit 0 == 1
+    // means WriteRecord.  Both types are system-heap allocated and have a
+    // free low bit, which is checked below.
+    std::atomic<HeadWord> head_;
 
-    // 日志辅助：获取短线程ID
-    size_t get_tid() const {
-        return std::hash<std::thread::id>{}(std::this_thread::get_id()) % 1000;
+#if STM_WW_TEST_HOOKS
+    inline static std::atomic<ReadSnapshotHook> read_snapshot_hook_{nullptr};
+#endif
+
+#if STM_WW_VERIFY_LOGIC_MODE
+    mutable std::mutex verify_mu_;
+#endif
+
+    static_assert(alignof(NodeT) >= 2,
+                  "VersionNode must have a free low bit for head tagging");
+    static_assert(alignof(RecordT) >= 2,
+                  "WriteRecord must have a free low bit for head tagging");
+
+    static HeadWord packNode_(NodeT* node) noexcept {
+        assert(node != nullptr);
+        return TaggedPtrHelper::packNode(node);
+    }
+
+    static HeadWord packRecord_(RecordT* record) noexcept {
+        assert(record != nullptr);
+        return TaggedPtrHelper::packRecord(record);
+    }
+
+    static NodeT* unpackNode_(HeadWord raw) noexcept {
+        if (raw == 0 || !TaggedPtrHelper::isNode(raw)) return nullptr;
+        return TaggedPtrHelper::unpackNode<NodeT>(raw);
+    }
+
+    static RecordT* unpackRecord_(HeadWord raw) noexcept {
+        if (raw == 0 || !TaggedPtrHelper::isRecord(raw)) return nullptr;
+        return TaggedPtrHelper::unpackRecord<RecordT>(raw);
+    }
+
+    template<typename U>
+    static void retireOrLeak(U* ptr) {
+        if (!ptr) return;
+#if STM_WW_VERIFY_LOGIC_MODE
+        // Verification mode intentionally keeps published objects alive.
+        // TxContext may retain a write-set token until its destructor, while
+        // another thread can already have flattened the corresponding head.
+        (void)ptr;
+#else
+        EBRManager::instance()->retire(ptr);
+#endif
+    }
+
+    static NodeT* selectVisibleNode_(HeadWord raw,
+                                     const TxDescriptor* tx) noexcept {
+        if (NodeT* node = unpackNode_(raw)) return node;
+
+        RecordT* record = unpackRecord_(raw);
+        if (!record || !record->owner) return nullptr;
+
+        TxStatus status = record->owner->status.load(std::memory_order_acquire);
+        if (status == TxStatus::COMMITTED ||
+            (record->owner == tx && status == TxStatus::ACTIVE)) {
+            return record->new_node;
+        }
+
+        // A foreign ACTIVE record and any ABORTED record expose old_node.
+        return record->old_node;
+    }
+
+    NodeT* loadVisibleNode_(const TxDescriptor* tx) const noexcept {
+        for (;;) {
+            HeadWord h1 = head_.load(std::memory_order_acquire);
+            NodeT* selected = selectVisibleNode_(h1, tx);
+            if (selected == nullptr) {
+                std::fprintf(stderr, "[FATAL] Var:%p | invalid head state\n",
+                             static_cast<const void*>(this));
+                std::abort();
+            }
+
+            HeadWord h2 = head_.load(std::memory_order_acquire);
+            if (h1 == h2) return selected;
+            std::this_thread::yield();
+        }
+    }
+
+    bool helpResolveRecord_(RecordT* record, TxStatus terminal_status) noexcept {
+        if (!record || !record->owner ||
+            (terminal_status != TxStatus::ABORTED &&
+             terminal_status != TxStatus::COMMITTED)) {
+            return false;
+        }
+
+        NodeT* replacement = terminal_status == TxStatus::COMMITTED
+            ? record->new_node
+            : record->old_node;
+        NodeT* detached = terminal_status == TxStatus::COMMITTED
+            ? record->old_node
+            : record->new_node;
+        if (!replacement || !detached) return false;
+
+        HeadWord expected = packRecord_(record);
+        if (!head_.compare_exchange_strong(expected,
+                                           packNode_(replacement),
+                                           std::memory_order_acq_rel,
+                                           std::memory_order_acquire)) {
+            // Another helper completed this generation, or a later writer
+            // installed a new generation.  That thread owns retirement.
+            return false;
+        }
+
+        // Only the successful Record -> Node CAS retires the detached pair.
+        retireOrLeak(detached);
+        retireOrLeak(record);
+        return true;
+    }
+
+    void destroyHead_() noexcept {
+        HeadWord raw = head_.load(std::memory_order_acquire);
+        if (raw == 0) return;
+
+        if (RecordT* record = unpackRecord_(raw)) {
+#if STM_WW_VERIFY_LOGIC_MODE
+            delete record->old_node;
+            delete record->new_node;
+            delete record;
+#else
+            // While a Record is the root, both nodes are reachable through
+            // it.  Destruction is valid only after external users stop.
+            retireOrLeak(record->old_node);
+            retireOrLeak(record->new_node);
+            retireOrLeak(record);
+#endif
+            return;
+        }
+
+        retireOrLeak(unpackNode_(raw));
     }
 
 public:
     template<typename... Args>
-    TMVar(Args&&...args) : record_ptr_(nullptr) {
+    explicit TMVar(Args&&... args) : head_(0) {
         NodeT* init_node = new NodeT(0, std::forward<Args>(args)...);
-        data_ptr_.store(init_node, std::memory_order_release);
-        std::printf("[T%zu] [CONSTRUCT] Var:%p | InitDataNode:%p | Initialized\n", get_tid(), (void*)this, (void*)init_node);
+        head_.store(packNode_(init_node), std::memory_order_release);
     }
 
     ~TMVar() {
-        std::printf("[T%zu] [DESTRUCT] Var:%p | Destroying TMVar\n", get_tid(), (void*)this);
-        // EBRManager::instance()->retire(data_ptr_.load(std::memory_order_acquire));
-        // RecordT* rec = record_ptr_.load(std::memory_order_acquire);
-        // if (rec) EBRManager::instance()->retire(rec);
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        destroyHead_();
     }
 
     // 禁止拷贝和移动
@@ -63,171 +218,296 @@ public:
     TMVar(TMVar&&) = delete;
     TMVar& operator=(TMVar&&) = delete;
 
-    T readProxy(TxDescriptor* tx) {
-        size_t tid = get_tid();
-        RecordT* record = record_ptr_.load(std::memory_order_acquire);
+#if STM_WW_TEST_HOOKS
+    static void setReadSnapshotHook(ReadSnapshotHook hook) noexcept {
+        read_snapshot_hook_.store(hook, std::memory_order_release);
+    }
 
-        // Case 1: 无锁 -> 直接读
-        if(record == nullptr) {
-            NodeT* node = data_ptr_.load(std::memory_order_acquire);
-            std::printf("[T%zu] [READ-STABLE] Var:%p | Node:%p | ValAddr:%p\n", tid, (void*)this, (void*)node, (void*)&node->payload);
-            
-            if (((uintptr_t)node & 0x3)) {
-                std::printf("[T%zu] [CRITICAL] Var:%p | Corrupt stable node pointer detected: %p\n", tid, (void*)this, (void*)node);
-            }
-            return node->payload;
-        }
+    static void clearReadSnapshotHook() noexcept {
+        setReadSnapshotHook(nullptr);
+    }
 
-        // Case 2: 有锁 -> 检查 Owner
-        if(record->owner == tx) {
-            std::printf("[T%zu] [READ-OWNER] Var:%p | TxDesc:%p | Reading my own NewNode:%p\n", tid, (void*)this, (void*)tx, (void*)record->new_node);
-            return record->new_node->payload;
-        }
+    HeadWord debugLoadHeadForTest() const noexcept {
+        return head_.load(std::memory_order_acquire);
+    }
 
-        // Case 3: 冲突检测 (Wound-Wait 读策略)
+    RecordT* debugLoadRecordForTest() const noexcept {
+        return unpackRecord_(head_.load(std::memory_order_acquire));
+    }
+
+    NodeT* debugLoadNodeForTest() const noexcept {
+        return unpackNode_(head_.load(std::memory_order_acquire));
+    }
+
+    bool debugHelpCurrentRecordForTest() {
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        HeadWord raw = head_.load(std::memory_order_acquire);
+        RecordT* record = unpackRecord_(raw);
+        if (!record) return false;
         TxStatus status = record->owner->status.load(std::memory_order_acquire);
+        return helpResolveRecord_(record, status);
+    }
+#endif
 
-        if (status == TxStatus::COMMITTED) {
-            std::printf("[T%zu] [READ-SNAPSHOT] Var:%p | Owner:%p (COMMITTED) | Reading NewNode:%p\n", tid, (void*)this, (void*)record->owner, (void*)record->new_node);
-            return record->new_node->payload;
-        } 
-        else {
-            std::printf("[T%zu] [READ-SNAPSHOT] Var:%p | Owner:%p (ACTIVE/ABORT) | Reading OldNode:%p\n", tid, (void*)this, (void*)record->owner, (void*)record->old_node);
-            return record->old_node->payload;
+    ReadSnapshot<T> readSnapshot(const TxDescriptor* tx) {
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        for (;;) {
+            HeadWord h1 = head_.load(std::memory_order_acquire);
+            NodeT* selected = selectVisibleNode_(h1, tx);
+            if (selected == nullptr) {
+                std::fprintf(stderr, "[FATAL] Var:%p | invalid head state\n",
+                             static_cast<void*>(this));
+                std::abort();
+            }
+
+            // Copy both fields from exactly the same VersionNode.
+            T value = selected->payload;
+            uint64_t version = selected->loadWriteTs();
+
+#if STM_WW_TEST_HOOKS
+            if (auto hook = read_snapshot_hook_.load(std::memory_order_acquire)) {
+                hook(*this);
+            }
+#endif
+
+            HeadWord h2 = head_.load(std::memory_order_acquire);
+            if (h1 == h2) {
+                return ReadSnapshot<T>{std::move(value), version, selected};
+            }
+            std::this_thread::yield();
         }
     }
 
-    void* tryWriteAndGetRecord(TxDescriptor* tx, const void* val_ptr, TxDescriptor*& out_conflict) {
-        auto tid = get_tid();
-        
-        NodeT* my_new_node = new NodeT(tx->start_ts, *static_cast<const T*>(val_ptr));
-        RecordT* my_record = new RecordT(tx, nullptr, my_new_node);
+    // Compatibility API.  New transaction code uses readSnapshot() so the
+    // value and version are obtained from one generation.
+    T readProxy(TxDescriptor* tx) {
+        return readSnapshot(tx).value;
+    }
 
-        std::printf("[T%zu] [WRITE-INIT] Var:%p | NewNode:%p | Record:%p | StartTS:%lu\n", tid, (void*)this, (void*)my_new_node, (void*)my_record, tx->start_ts);
+    void* tryWriteAndGetRecord(TxDescriptor* tx,
+                               const void* val_ptr,
+                               TxDescriptor*& out_conflict) {
+        out_conflict = nullptr;
+        if (!tx || !val_ptr) return nullptr;
 
-        while (true) {
-            RecordT* current = record_ptr_.load(std::memory_order_acquire);
-            NodeT* stable_node = data_ptr_.load(std::memory_order_acquire);
-            
-            my_record->old_node = stable_node;
+        // Serialize owner draft mutation with TxContext's prepare phase.
+        // A write that starts after prepare has begun is rejected before it
+        // can touch a published draft.
+        std::unique_lock<std::mutex> tx_lock(tx->write_gate);
 
-            if(current != nullptr) {
-                // --- 重入 (Re-entrant) ---
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+
+        constexpr int kTryWriteRetryLimit = 20000;
+        int retry_count = 0;
+
+        while (++retry_count <= kTryWriteRetryLimit) {
+            if (!tx->writePhaseOpen()) {
+                return nullptr;
+            }
+
+            HeadWord observed = head_.load(std::memory_order_acquire);
+            if (RecordT* current = unpackRecord_(observed)) {
                 if (current->owner == tx) {
-                    std::printf("[T%zu] [WRITE-REENTRANT] Var:%p | Owner:%p | Replacing DraftNode %p -> %p\n", tid, (void*)this, (void*)tx, (void*)current->new_node, (void*)my_new_node);
-                    
-                    my_record->old_node = nullptr; 
-                    my_record->new_node = nullptr; 
-                    delete my_record; 
+                    if (!tx->writePhaseOpen()
+                        || current->prepared.load(std::memory_order_acquire)) {
+                        return nullptr;
+                    }
 
-                    NodeT* old_draft_node = current->new_node;
-                    current->new_node = my_new_node; 
-                    // EBRManager::instance()->retire(old_draft_node); 
+                    // The Locator relationship is immutable.  Only its
+                    // owner's ACTIVE draft payload may be updated.
+                    static_assert(std::is_assignable_v<T&, const T&>,
+                                  "re-entrant WwSTM writes require assignable T");
+                    current->new_node->payload = *static_cast<const T*>(val_ptr);
+
+                    if (!tx->writePhaseOpen()) {
+                        return nullptr;
+                    }
                     return current;
                 }
 
                 TxStatus status = current->owner->status.load(std::memory_order_acquire);
-
-                // --- 冲突 (Active) ---
-                if(status == TxStatus::ACTIVE) {
-                    std::printf("[T%zu] [WRITE-CONFLICT] Var:%p | Owner:%p is ACTIVE | Failing\n", tid, (void*)this, (void*)current->owner);
+                if (status == TxStatus::ACTIVE) {
                     out_conflict = current->owner;
-                    delete my_new_node;
-                    delete my_record;
                     return nullptr;
                 }
-                
-                // --- 冲突 (Committed but not cleaned) ---
-                if (status == TxStatus::COMMITTED) {
-                    std::printf("[T%zu] [WRITE-WAIT] Var:%p | Owner:%p is COMMITTED | Yielding\n", tid, (void*)this, (void*)current->owner);
-                    std::this_thread::yield();
-                    continue; 
-                }
 
-                // --- 抢占 (Steal Aborted) ---
-                std::printf("[T%zu] [WRITE-STEAL] Var:%p | Owner:%p is ABORTED | Stealing lock\n", tid, (void*)this, (void*)current->owner);
+                // Terminal records are first flattened to a Node.  The next
+                // loop then attempts Node -> Record; Record -> Record is gone.
+                helpResolveRecord_(current, status);
+                std::this_thread::yield();
+                continue;
             }
 
-            // --- CAS 尝试上位 ---
-            RecordT* expected = current;
-            if (record_ptr_.compare_exchange_strong(expected, my_record, std::memory_order_acq_rel)) {
-                std::printf("[T%zu] [WRITE-LOCKED] Var:%p | Record %p successfully acquired lock\n", tid, (void*)this, (void*)my_record);
+            NodeT* old_node = unpackNode_(observed);
+            if (!old_node) continue;
 
-                if (current != nullptr) {
-                    // EBRManager::instance()->retire(current->new_node);
-                    // EBRManager::instance()->retire(current);
-                }
-                
-                return my_record;
-            } 
-            else {
-                std::printf("[T%zu] [WRITE-RETRY] Var:%p | CAS failed, someone else updated record_ptr_\n", tid, (void*)this);
+            NodeT* new_node = new NodeT(tx->start_ts,
+                                        *static_cast<const T*>(val_ptr));
+            RecordT* record = new RecordT(tx, old_node, new_node);
+            HeadWord expected = observed;
+            if (head_.compare_exchange_strong(expected,
+                                               packRecord_(record),
+                                               std::memory_order_acq_rel,
+                                               std::memory_order_acquire)) {
+                // The successful CAS is the publication point.  No field of
+                // record is modified after this point.
+                return record;
             }
+
+            // This candidate was never visible through head_ and can be
+            // destroyed directly.
+            delete new_node;
+            delete record;
+            std::this_thread::yield();
         }
+
+        return nullptr;
     }
 
-    void commitReleaseRecord(const uint64_t commit_ts) override {
-        auto tid = get_tid();
-        RecordT* record = record_ptr_.load(std::memory_order_acquire);
-        
-        if (!record) {
-            std::printf("[T%zu] [COMMIT-ERROR] Var:%p | record_ptr_ is NULL during commit!\n", tid, (void*)this);
-            return; 
+    bool validateForCommit(void* saved_record_ptr,
+                           const TxDescriptor* owner) const override {
+        auto* record = static_cast<RecordT*>(saved_record_ptr);
+        if (!record || !owner) return false;
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        if (head_.load(std::memory_order_acquire) != packRecord_(record)) {
+            return false;
+        }
+        return record->owner == owner;
+    }
+
+    bool validateReadSnapshot(const void* node_ptr,
+                              uint64_t version,
+                              const TxDescriptor* tx) const override {
+        if (!node_ptr) return false;
+        ReadSnapshot<T> snapshot = const_cast<TMVar*>(this)->readSnapshot(tx);
+        return snapshot.node == node_ptr && snapshot.version == version;
+    }
+
+    bool validateReadBeforeWrite(void* saved_record_ptr,
+                                 const void* node_ptr,
+                                 uint64_t version) const override {
+        auto* record = static_cast<RecordT*>(saved_record_ptr);
+        if (!record || !node_ptr) return false;
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        if (head_.load(std::memory_order_acquire) != packRecord_(record)) {
+            return false;
+        }
+        return record->old_node == node_ptr
+            && record->old_node->loadWriteTs() == version;
+    }
+
+    bool prepareCommit(void* saved_record_ptr,
+                       TxDescriptor* owner,
+                       uint64_t commit_ts) override {
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        auto* record = static_cast<RecordT*>(saved_record_ptr);
+        if (!record || !owner) return false;
+
+        HeadWord expected = packRecord_(record);
+        if (head_.load(std::memory_order_acquire) != expected) {
+            return false;
+        }
+        if (record->owner != owner
+            || owner->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+            return false;
         }
 
-        std::printf("[T%zu] [COMMIT-START] Var:%p | Promoting NewNode:%p to Stable | CommitTS:%lu\n", tid, (void*)this, (void*)record->new_node, commit_ts);
-
-        // 验证指针合法性
-        if (((uintptr_t)record->new_node & 0x3)) {
-            std::printf("[T%zu] [CRITICAL-COMMIT] Var:%p | Promoting corrupt NewNode pointer: %p\n", tid, (void*)this, (void*)record->new_node);
+        // Preparation is idempotent for the same commit timestamp, but never
+        // rewrites a frozen draft.  TxContext holds owner->write_gate while
+        // it executes the complete validate/prepare/commit sequence.
+        if (record->prepared.load(std::memory_order_acquire)) {
+            return record->new_node->loadWriteTs() == commit_ts;
         }
 
-        record->new_node->write_ts = commit_ts;
-        data_ptr_.store(record->new_node, std::memory_order_release);
-        record_ptr_.store(nullptr, std::memory_order_release);
+        // Direct callers and TxContext both use this bit as the owner-side
+        // write freeze.  TxContext sets it before validation; setting it here
+        // as well makes the lower-level prepare API safe to use on its own.
+        owner->prepare_started.store(true, std::memory_order_release);
+        record->new_node->storeWriteTs(commit_ts);
+        record->prepared.store(true, std::memory_order_release);
+        return owner->status.load(std::memory_order_acquire) == TxStatus::ACTIVE;
+    }
 
-        std::printf("[T%zu] [COMMIT-SUCCESS] Var:%p | Lock released, data_ptr_ updated\n", tid, (void*)this);
+    void helpComplete(void* saved_record_ptr) override {
+        auto* record = static_cast<RecordT*>(saved_record_ptr);
+        if (!record || !record->owner) return;
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
 
-        // EBRManager::instance()->retire(record->old_node);
-        // EBRManager::instance()->retire(record);
+        // The owner may still retain a raw write-set token after another
+        // thread has flattened and retired this generation.  Treat head
+        // identity as a cleanup fast path, not as a transaction failure, and
+        // do not dereference a token that is no longer the current root.
+        HeadWord expected = packRecord_(record);
+        if (head_.load(std::memory_order_acquire) != expected) {
+            return;
+        }
+
+        TxStatus status = record->owner->status.load(std::memory_order_acquire);
+        if (status == TxStatus::COMMITTED || status == TxStatus::ABORTED) {
+            helpResolveRecord_(record, status);
+        }
     }
 
     void abortRestoreData(void* saved_record_ptr) override {
-        auto tid = get_tid();
-        auto* my_record = static_cast<RecordT*>(saved_record_ptr);
-        
-        std::printf("[T%zu] [ABORT-START] Var:%p | Attempting to rollback Record:%p\n", tid, (void*)this, (void*)my_record);
+        auto* record = static_cast<RecordT*>(saved_record_ptr);
+        if (!record) return;
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
 
-        RecordT* expected = my_record;
-        if (record_ptr_.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel)) {
-            std::printf("[T%zu] [ABORT-CLEAN] Var:%p | Rollback success, lock cleared\n", tid, (void*)this);
-            // EBRManager::instance()->retire(my_record->new_node);
-            // EBRManager::instance()->retire(my_record);
-        } 
-        else {
-            std::printf("[T%zu] [ABORT-STOLEN] Var:%p | Lock was already stolen by Record:%p\n", tid, (void*)this, (void*)expected);
+        HeadWord expected = packRecord_(record);
+        // A helper may have already completed Record -> Node and retired the
+        // record.  The owner still holds the raw write-set token until the
+        // transaction cleanup completes, so an early head check is required
+        // before reading old_node/new_node from that possibly stale token.
+        if (head_.load(std::memory_order_acquire) != expected) {
+            return;
+        }
+
+        NodeT* old_node = record->old_node;
+        NodeT* new_node = record->new_node;
+        if (head_.compare_exchange_strong(expected,
+                                          packNode_(old_node),
+                                          std::memory_order_acq_rel,
+                                          std::memory_order_acquire)) {
+            retireOrLeak(new_node);
+            retireOrLeak(record);
         }
     }
 
     uint64_t getDataVersion() const override {
-        if (reinterpret_cast<uintptr_t>(this) < 4096) {
-            std::printf("[FATAL] TMVar 'this' is invalid! Addr: %p\n", (void*)this);
-            std::abort();
-        }
-
-        NodeT* node = data_ptr_.load(std::memory_order_acquire);
-        
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+        NodeT* node = loadVisibleNode_(nullptr);
         if (node == nullptr) {
-            std::printf("[FATAL] Var:%p | data_ptr_ is NULL!\n", (void*)this);
+            std::fprintf(stderr, "[FATAL] Var:%p | head resolved to NULL!\n",
+                         static_cast<const void*>(this));
             std::abort();
         }
 
-        if (((uintptr_t)node & 0x3)) {
-            std::printf("[FATAL] Var:%p | Corrupt node pointer in getDataVersion: %p\n", (void*)this, (void*)node);
-            // 这里不立刻 abort，让日志输完
+        if ((reinterpret_cast<uintptr_t>(node) & 0x1) != 0) {
+            std::fprintf(stderr,
+                         "[FATAL] Var:%p | Corrupt node pointer in getDataVersion: %p\n",
+                         static_cast<const void*>(this),
+                         static_cast<void*>(node));
         }
 
-        return node->write_ts; 
+        return node->loadWriteTs();
     }
 };
 
