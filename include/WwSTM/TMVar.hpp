@@ -33,10 +33,16 @@ class TMVar : public TMVarBase {
 public:
     using NodeT = detail::VersionNode<T>;
     using RecordT = detail::WriteRecord<T>;
+#if STM_WW_TEST_HOOKS
+    using StabilityCheckHook = void (*)(TMVar<T>&);
+#endif
 
 private:
     std::atomic<NodeT*> data_ptr_;
     std::atomic<RecordT*> record_ptr_;
+#if STM_WW_TEST_HOOKS
+    inline static std::atomic<StabilityCheckHook> stability_check_hook_{nullptr};
+#endif
 #if STM_WW_VERIFY_LOGIC_MODE
     mutable std::mutex verify_mu_;
 #endif
@@ -79,6 +85,28 @@ public:
     TMVar& operator=(const TMVar&) = delete;
     TMVar(TMVar&&) = delete;
     TMVar& operator=(TMVar&&) = delete;
+
+#if STM_WW_TEST_HOOKS
+    static void setStabilityCheckHook(StabilityCheckHook hook) noexcept {
+        stability_check_hook_.store(hook, std::memory_order_release);
+    }
+
+    static void clearStabilityCheckHook() noexcept {
+        setStabilityCheckHook(nullptr);
+    }
+
+    // White-box test helpers. They are compiled only into test targets and
+    // are used to arrange the exact publish/reader/rollback interleaving.
+    RecordT* debugLoadRecordForTest() const noexcept {
+        return record_ptr_.load(std::memory_order_acquire);
+    }
+
+    void debugReplaceStableForTest(uint64_t write_ts, const T& value) {
+        NodeT* replacement = new NodeT(write_ts, value);
+        NodeT* old = data_ptr_.exchange(replacement, std::memory_order_acq_rel);
+        retireOrLeak(old);
+    }
+#endif
 
     T readProxy(TxDescriptor* tx) {
 #if STM_WW_VERIFY_LOGIC_MODE
@@ -154,11 +182,41 @@ public:
 #else
         constexpr int kTryWriteRetryLimit = 20000;
         int retry_count = 0;
+        bool ever_published = false;
+
+        auto allocate_candidate = [&]() {
+            my_new_node = new NodeT(tx->start_ts, *static_cast<const T*>(val_ptr));
+            my_record = new RecordT(tx, nullptr, my_new_node);
+        };
+
+        auto discard_private_candidate = [&]() {
+            // A candidate may be destroyed directly only while it has never
+            // been visible through record_ptr_.  Once the install CAS
+            // succeeds, a reader may still hold the old raw pointer even
+            // after the record is removed from the variable.
+            if (my_record != nullptr && !ever_published) {
+                delete my_new_node;
+                delete my_record;
+                my_new_node = nullptr;
+                my_record = nullptr;
+            }
+        };
+
+        auto retire_published_candidate = [&]() {
+            // Removal from record_ptr_ does not prove that all readers have
+            // dropped the record.  Retire both objects that were reachable
+            // through the published record; EBR owns their eventual reclaim.
+            retireOrLeak(my_new_node);
+            retireOrLeak(my_record);
+            my_new_node = nullptr;
+            my_record = nullptr;
+            ever_published = false;
+        };
+
         while (true) {
             if (++retry_count > kTryWriteRetryLimit) {
                 out_conflict = nullptr;
-                delete my_new_node;
-                delete my_record;
+                discard_private_candidate();
                 return nullptr;
             }
 
@@ -167,11 +225,14 @@ public:
             // 未安装则安全删除，避免继续操作一个可能已被判死的事务。
             if (tx->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
                 out_conflict = nullptr;
-                if (record_ptr_.load(std::memory_order_acquire) != my_record) {
-                    delete my_new_node;
-                    delete my_record;
-                }
+                discard_private_candidate();
                 return nullptr;
+            }
+
+            if (my_record == nullptr) {
+                // A candidate retired after rollback can never be reused.
+                // Start the next attempt with a completely new pair.
+                allocate_candidate();
             }
 
             RecordT* current = record_ptr_.load(std::memory_order_acquire);
@@ -195,21 +256,25 @@ public:
 
                 if(status == TxStatus::ACTIVE) {
                     out_conflict = current->owner;
-                    delete my_new_node;
-                    delete my_record;
+                    discard_private_candidate();
                     return nullptr;
                 }
                 
                 if (status == TxStatus::COMMITTED) {
                     out_conflict = current->owner;
-                    delete my_new_node;
-                    delete my_record;
+                    discard_private_candidate();
                     return nullptr;
                 }
             }
 
             RecordT* expected = current;
             if (record_ptr_.compare_exchange_strong(expected, my_record, std::memory_order_acq_rel)) {
+                ever_published = true;
+#if STM_WW_TEST_HOOKS
+                if (auto hook = stability_check_hook_.load(std::memory_order_acquire)) {
+                    hook(*this);
+                }
+#endif
                 NodeT* current_data = data_ptr_.load(std::memory_order_acquire);
                 if (current_data != stable_node) {
                     // 稳定性失败，卸载重试。必须用 CAS 只卸“仍属于自己”的记录：
@@ -218,6 +283,7 @@ public:
                     // 所有权已转移，此后绝不能再 delete/复用 my_record。
                     RecordT* mine = my_record;
                     if (record_ptr_.compare_exchange_strong(mine, nullptr, std::memory_order_acq_rel)) {
+                        retire_published_candidate();
                         std::this_thread::yield();
                         continue;
                     }

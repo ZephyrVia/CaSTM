@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <vector>
 
 // ==========================================
@@ -16,6 +18,65 @@
 // #include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
 
 using namespace STM::Ww;
+
+namespace {
+
+class PhaseGate {
+public:
+    void signal() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            ++phase_;
+        }
+        condition_.notify_all();
+    }
+
+    void wait_until(int target) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        condition_.wait(lock, [this, target] { return phase_ >= target; });
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    int phase_ = 0;
+};
+
+struct LifetimeValue {
+    int value;
+};
+
+struct PublishedRollbackState {
+    TxDescriptor* writer = nullptr;
+    PhaseGate published;
+    PhaseGate reader_loaded;
+    PhaseGate allow_reader_dereference;
+    PhaseGate reader_dereferenced;
+    std::atomic<bool> reader_saw_live_record{false};
+    std::atomic<bool> first_hook{true};
+};
+
+PublishedRollbackState* active_published_rollback_state = nullptr;
+
+void forcePublishedRollback(TMVar<LifetimeValue>& var) {
+    auto* state = active_published_rollback_state;
+    if (!state || !state->first_hook.exchange(false, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    // The install CAS has completed. Wait until a reader has loaded the raw
+    // record pointer and entered EBR before changing the stable pointer.
+    state->published.signal();
+    state->reader_loaded.wait_until(1);
+
+    // This deliberately makes the writer's stability recheck fail while its
+    // record is still published. The writer is then aborted so the next loop
+    // cannot publish a second candidate.
+    var.debugReplaceStableForTest(1, LifetimeValue{1});
+    state->writer->status.store(TxStatus::ABORTED, std::memory_order_release);
+}
+
+} // namespace
 
 // ==========================================
 // 2. 测试夹具 (Fixture)
@@ -274,4 +335,122 @@ TEST_F(TMVarTest, ActiveRecordReadIgnoresStaleOldNode) {
     ASSERT_EQ(var.readProxy(&tx_reader), 10) << "读值必须来自 data_ptr_，而非 old_node";
 
     delete stale_fake;
+}
+
+// Regression: a reader may retain a published WriteRecord after the writer
+// removes it from record_ptr_. The record must therefore be retired, not
+// directly deleted or reused by the rollback retry.
+TEST_F(TMVarTest, PublishedWriteRecordRetiresAfterStabilityRollback) {
+#if STM_WW_VERIFY_LOGIC_MODE
+    GTEST_SKIP() << "This interleaving exercises the mode=0 CAS path.";
+#else
+    using TestVar = TMVar<LifetimeValue>;
+    using TestRecord = typename TestVar::RecordT;
+
+    EBRManager* mgr = EBRManager::instance();
+    TestRecord::debug_destructor_count.store(0, std::memory_order_relaxed);
+
+    TestVar var(LifetimeValue{0});
+    TxDescriptor writer(100);
+    TxDescriptor reader(200);
+    PublishedRollbackState state;
+    state.writer = &writer;
+    active_published_rollback_state = &state;
+    TestVar::setStabilityCheckHook(&forcePublishedRollback);
+
+    std::atomic<typename TestVar::RecordT*> held_record{nullptr};
+    std::thread reader_thread([&] {
+        state.published.wait_until(1);
+        mgr->enter();
+
+        auto* record = var.debugLoadRecordForTest();
+        held_record.store(record, std::memory_order_release);
+        state.reader_loaded.signal();
+        state.allow_reader_dereference.wait_until(1);
+
+        const bool live = record != nullptr
+            && record->owner == &writer
+            && record->new_node != nullptr
+            && record->new_node->payload.value == 7;
+        state.reader_saw_live_record.store(live, std::memory_order_release);
+        state.reader_dereferenced.signal();
+        mgr->leave();
+    });
+
+    mgr->enter();
+    LifetimeValue draft{7};
+    TxDescriptor* conflict = nullptr;
+    void* result = var.tryWriteAndGetRecord(&writer, &draft, conflict);
+    TestVar::clearStabilityCheckHook();
+    active_published_rollback_state = nullptr;
+
+    EXPECT_EQ(result, nullptr) << "the hook aborts the writer after rollback";
+    EXPECT_EQ(conflict, nullptr);
+    EXPECT_EQ(held_record.load(std::memory_order_acquire) != nullptr, true);
+    EXPECT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 0)
+        << "an active reader must keep the published record alive";
+    mgr->leave();
+
+    state.allow_reader_dereference.signal();
+    state.reader_dereferenced.wait_until(1);
+    reader_thread.join();
+
+    EXPECT_TRUE(state.reader_saw_live_record.load(std::memory_order_acquire));
+
+    // The reader's leave supplies one epoch transition. One further clean
+    // enter/leave supplies the grace period for the record retired by T1.
+    for (int i = 0; i < 4
+         && TestRecord::debug_destructor_count.load(std::memory_order_relaxed) == 0;
+         ++i) {
+        mgr->enter();
+        mgr->leave();
+    }
+
+    EXPECT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 1)
+        << "the published record must be reclaimed exactly once";
+#endif
+}
+
+// Invariant: once an installed record is removed, exactly one cleanup path
+// owns it. A repeated abort cleanup is a no-op and must not retire it twice.
+TEST_F(TMVarTest, PublishedWriteRecordRetiredExactlyOnce) {
+#if STM_WW_VERIFY_LOGIC_MODE
+    GTEST_SKIP() << "This invariant exercises the mode=0 EBR path.";
+#else
+    using TestVar = TMVar<LifetimeValue>;
+    using TestRecord = typename TestVar::RecordT;
+
+    EBRManager* mgr = EBRManager::instance();
+    TestRecord::debug_destructor_count.store(0, std::memory_order_relaxed);
+
+    TestVar var(LifetimeValue{0});
+    TxDescriptor writer(300);
+    mgr->enter();
+
+    LifetimeValue draft{11};
+    TxDescriptor* conflict = nullptr;
+    void* record = var.tryWriteAndGetRecord(&writer, &draft, conflict);
+    EXPECT_NE(record, nullptr);
+    EXPECT_EQ(conflict, nullptr);
+
+    writer.status.store(TxStatus::ABORTED, std::memory_order_release);
+    var.abortRestoreData(record);
+    // The saved pointer is only an ownership token now. The second call must
+    // observe record_ptr_ == nullptr and must not retire the object again.
+    var.abortRestoreData(record);
+
+    EXPECT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 0)
+        << "retirement must wait for the grace period";
+    mgr->leave();
+
+    for (int i = 0; i < 4
+         && TestRecord::debug_destructor_count.load(std::memory_order_relaxed) == 0;
+         ++i) {
+        mgr->enter();
+        mgr->leave();
+    }
+
+    EXPECT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 1)
+        << "a published record must be reclaimed exactly once";
+#endif
 }

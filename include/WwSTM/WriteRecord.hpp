@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <utility>
 #include <variant>
+#include <atomic>
+#include "WwSTM/Config.hpp"
 #include "TxDescriptor.hpp" 
 #include "WwSTM/VersionNode.hpp"
 
@@ -32,6 +34,16 @@ struct WriteRecord {
     static void operator delete(void* p) {
         ::operator delete(p);
     }
+
+#if STM_WW_TEST_HOOKS
+    // Used only by the deterministic published-record lifetime regression.
+    // A record destructor must run once, after its EBR grace period.
+    inline static std::atomic<uint64_t> debug_destructor_count{0};
+
+    ~WriteRecord() {
+        debug_destructor_count.fetch_add(1, std::memory_order_relaxed);
+    }
+#endif
 };
 
 

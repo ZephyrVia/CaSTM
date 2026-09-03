@@ -30,6 +30,9 @@ target_link_libraries(run_tests PRIVATE
     gtest_main  # 来自 third_party/googletest
 )
 
+# Enable deterministic WwSTM lifetime hooks only in the test executable.
+target_compile_definitions(run_tests PRIVATE STM_WW_TEST_HOOKS=1)
+
 # 3. 确保包含目录可见
 target_include_directories(run_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include

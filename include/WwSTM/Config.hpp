@@ -12,3 +12,8 @@
 #define STM_WW_ENABLE_LOGGING 0
 #endif
 
+// Test-only synchronization hooks for deterministic lifetime regressions.
+// Production builds keep these hooks disabled and pay no synchronization cost.
+#ifndef STM_WW_TEST_HOOKS
+#define STM_WW_TEST_HOOKS 0
+#endif

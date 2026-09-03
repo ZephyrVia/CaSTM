@@ -1,52 +1,96 @@
-# BUG-04：WwSTM published WriteRecord 生命周期协议
+# BUG-04：WwSTM published WriteRecord 生命周期错误
 
-状态：部分修复，仍有独立后续问题
+状态：已修复
 
-相关修复：`7efba79 fix: tryWriteAndGetRecord 回滚协议修复，根除 mode=0 双重释放`
+## 症状
 
-## 原始症状
+`STM_WW_VERIFY_LOGIC_MODE=0` 的 CAS 路径曾以约 20% 的概率出现 double-free、invalid
+free 或段错误。ASan 取证显示，同一 `WriteRecord` 可能先从冲突路径直接 `delete`，又被
+EBR retire deleter 回收；另一个表现是 reader 仍持有记录时，记录已经被复用或释放。
 
-`STM_WW_VERIFY_LOGIC_MODE=0` 的完整路径曾以约 20% 的概率出现 double-free、invalid
-free 或段错误。ASan 观察到同一个 `WriteRecord` 先被直接 `delete`，又被 EBR retire
-deleter 回收。
+这不是 EBR 纪元提前回收问题。EBR 纪元修复记录见
+[`BUG-02-EBR-retire纪元标记提前回收.md`](BUG-02-EBR-retire纪元标记提前回收.md)。
 
-## 原始错误时序
+## 根因
 
-稳定性检查失败后的旧代码使用无条件 `store(nullptr)` 并继续复用同一个记录：
+此前 `tryWriteAndGetRecord()` 在稳定性复核失败后只做了回滚 CAS，却继续复用原来的
+`my_record`：
 
 ```text
-T1: CAS 安装 R1 成功
-T1: 稳定性检查失败，尚未回滚
-T2: 击伤 T1，偷走 R1，并 retire R1
-T1: store(nullptr)，误清掉 T2 的记录
-T1: continue，继续复用已经转移所有权的 R1
-    -> 再次 retire，或在冲突分支直接 delete
+ALLOC
+→ INSTALL
+→ REMOVE
+→ REUSE
+→ DELETE
+→ UAF / double-free
 ```
 
-核心错误是把“CAS 安装成功”误当成“记录所有权一直归本线程”。发布到共享
-`record_ptr_` 后，所有权可能已经通过 steal 协议转移。
+`record_ptr_` 从记录改为 `nullptr`，只代表它不再是变量当前记录；已经执行过成功
+install CAS 的 reader 仍可能在自己的 EBR 临界区中持有旧裸指针。因此“从共享结构摘除”
+不等于“没有读者持有”。
 
-## 已完成的修复
+## 生命周期不变量
 
-`7efba79` 做了两件事：
+本轮将 `WriteRecord` 的所有权明确分成两类：
 
-1. 回滚使用 `CAS(my_record -> nullptr)`，只卸载仍属于自己的记录；CAS 失败时视为
-   所有权已转移，不再 delete 或复用该指针。
-2. 重试循环每轮复查事务状态；被击伤后，已发布的记录交给偷窃协议，未发布的本地
-   记录才可以安全释放。
+```text
+never published candidate
+  → 可以复用或直接 delete
 
-## 当前边界
+published once
+  → 不得复用
+  → 不得直接 delete
+  → 从 record_ptr_ 移除后只能 retire
+  → grace period 后恰好 reclaim 一次
+```
 
-这不是 EBR 提前回收问题。即使 EBR 纪元标记正确，如果某个 published `WriteRecord`
-仍被错误地留在 `record_ptr_`，上层仍可能访问已退休对象；反过来，直接 `delete` 路径
-也可能完全绕过 EBR。
+回滚 CAS 失败仍表示记录已被其他线程接管；当前线程不再 delete、复用或重复 retire，
+由窃取方负责退休。
 
-后续取证中仍保留过一类独立的 record 悬垂窗口：确定性仲裁增强了击伤/偷窃交错后，
-`record_ptr_` 可能指向已退休记录。该问题不在 BUG-02 的修复范围内。
+## 修复
 
-## 验证
+修复位于 [`include/WwSTM/TMVar.hpp`](include/WwSTM/TMVar.hpp)：
 
-当前分支 `mode=0` 的 `ConcurrentPathIncrement` 100 轮、高竞争测试 50 轮通过；
-本轮 EBR 修复没有修改 `tryWriteAndGetRecord()`、steal、COMMITTED 或 partial commit
-协议。若后续再出现 Ww UAF，应先按“EBR reclaim”与“direct delete / record reuse”
-两条路径分类，不能笼统归因于 EBR。
+1. 为当前 candidate 记录 `ever_published` 状态。
+2. 所有直接释放出口统一经过 `discard_private_candidate()`，仅允许未发布对象直接
+   `delete`；击伤后若记录已发布但已不在 `record_ptr_`，不再碰该指针。
+3. 稳定性复核失败且回滚 CAS 成功时，同时 retire `my_new_node` 与 `my_record`，清空
+   局部指针并为下一轮分配全新的 candidate。
+4. 保留原有回滚 CAS；CAS 失败仍按 ownership 已转移处理。
+
+## 确定性回归
+
+测试位于 [`tests/WwSTM/test_tmvar.cpp`](tests/WwSTM/test_tmvar.cpp)：
+
+- `PublishedWriteRecordRetiresAfterStabilityRollback`：用 phase gate 精确排列
+  `INSTALL → reader load → stable 改变 → rollback`。reader 活跃期间析构计数为 0，
+  离开并经过 grace period 后为 1。
+- `PublishedWriteRecordRetiredExactlyOnce`：同一已发布记录重复执行 abort 清理，确认
+  第二次调用不会重复 retire，最终析构计数仍为 1。
+
+hook 和析构计数由 `STM_WW_TEST_HOOKS` 控制，只在测试目标中启用；默认库构建不启用
+这些同步辅助设施。
+
+## 验证记录
+
+| 验证 | 结果 |
+| --- | --- |
+| 旧实现反向跑确定性回归 | 失败：reader 活跃时析构计数已为 1，保存的记录不能安全解引用 |
+| 修复后 mode=0 两项生命周期回归 | 通过 |
+| mode=0 全量 active 测试 ×20 | 22/22 通过 |
+| `ConcurrentPathIncrement` ×100 | 100/100 通过 |
+| 高竞争 Ww disabled 测试 ×100 | 100/100 通过 |
+| EBR 6 项 ×20 | 120/120 通过 |
+| VERIFY 全量 ×20 | active 测试全通过；生命周期回归按设计跳过 |
+| ASan+UBSan、`detect_leaks=0` 全量 | active 测试通过，无 UAF/double-free/invalid-free |
+| ASan+UBSan 生命周期回归 ×20、高竞争 Ww ×20 | 全部通过，无 ASan 内存错误 |
+
+UBSan 仍会报告项目原有的 `TxDescriptor alignas(64)` 对齐问题；本轮按范围未修改，
+它不是本 bug 的新增错误。
+
+## 本轮未处理
+
+- single-head 架构重构
+- COMMITTED publish window
+- partial commit
+- TxDescriptor lifetime/alignment
