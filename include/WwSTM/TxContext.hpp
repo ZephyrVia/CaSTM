@@ -80,7 +80,10 @@ public:
     ~TxContext() {
         if (my_desc_) {
             if (TxStatusHelper::is_committed(my_desc_->status)) {
-                cleanupResources();
+                // COMMITTED is irreversible, but a helper may still have to
+                // flatten one of this transaction's published records.  Do
+                // that before retiring the descriptor.
+                finishCommitted_();
             } else {
                 abortTransaction();
             }
@@ -108,18 +111,26 @@ public:
         // sequence.  TMVar::tryWriteAndGetRecord takes the same gate, so a
         // concurrent self-write cannot mutate a draft after preparation.
         std::unique_lock<std::mutex> prepare_lock(my_desc_->write_gate);
-        if (my_desc_->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+        TxStatus observed_status = my_desc_->status.load(std::memory_order_acquire);
+        if (observed_status != TxStatus::ACTIVE) {
+            prepare_lock.unlock();
+            if (observed_status == TxStatus::COMMITTED) {
+                finishCommitted_();
+                return true;
+            }
             abortTransaction();
             return false;
         }
         my_desc_->prepare_started.store(true, std::memory_order_release);
 
         if (!validateReadSet()) {
+            prepare_lock.unlock();
             abortTransaction();
             return false;
         }
 
         if (!validateWriteSetOwnership()) {
+            prepare_lock.unlock();
             abortTransaction();
             return false;
         }
@@ -132,6 +143,7 @@ public:
                 // No record has been logically committed yet.  The descriptor
                 // remains ACTIVE or has already been wounded, so abort can
                 // restore every prepared/installed generation.
+                prepare_lock.unlock();
                 abortTransaction();
                 return false;
             }
@@ -149,20 +161,23 @@ public:
         // WriteRecord now has its final payload and timestamp; after this CAS
         // no path may turn the transaction into ABORTED.
         if (!TxStatusHelper::tryCommit(my_desc_->status)) {
-            if (my_desc_->status.load(std::memory_order_acquire)
-                == TxStatus::COMMITTED) {
+            observed_status = my_desc_->status.load(std::memory_order_acquire);
+            prepare_lock.unlock();
+            if (observed_status == TxStatus::COMMITTED) {
                 // Another commit attempt (or a deterministic test hook) may
                 // have crossed the same irreversible point.  The logical
                 // result is still success; only physical cleanup remains.
-                for (const auto& entry : write_set_) {
-                    entry.var->helpComplete(entry.record_ptr);
-                }
-                cleanupResources();
+                finishCommitted_();
                 return true;
             }
             abortTransaction();
             return false;
         }
+
+        // The mutex is a preparation gate only.  Release it before cleanup so
+        // its containing descriptor cannot be reclaimed while this function
+        // is still implicitly unlocking the mutex at scope exit.
+        prepare_lock.unlock();
 
 #if STM_WW_TEST_HOOKS
         if (!write_set_.empty()) {
@@ -172,14 +187,7 @@ public:
         }
 #endif
 
-        // Physical cleanup is deliberately infallible.  A helper may have
-        // flattened any token already; that only changes where cleanup is
-        // performed, never the committed result.
-        for (const auto& entry : write_set_) {
-            entry.var->helpComplete(entry.record_ptr);
-        }
-
-        cleanupResources();
+        finishCommitted_();
         return true;
     }
 
@@ -321,7 +329,7 @@ private:
             // or any late cleanup path must never restore an old value after
             // the transaction has crossed its logical commit point.
             is_active_ = false;
-            cleanupResources();
+            finishCommitted_();
             return;
         }
 
@@ -331,7 +339,7 @@ private:
             // A concurrent status transition won the race while this caller
             // was trying to abort.  The committed side owns cleanup.
             is_active_ = false;
-            cleanupResources();
+            finishCommitted_();
             return;
         }
 
@@ -350,17 +358,41 @@ private:
         cleanupResources();
     }
 
+    void finishCommitted_() {
+        // Physical cleanup is deliberately infallible.  A helper may have
+        // flattened any token already; that only changes where cleanup is
+        // performed, never the committed result.
+        for (const auto& entry : write_set_) {
+            entry.var->helpComplete(entry.record_ptr);
+        }
+        cleanupResources();
+    }
+
+    static void retireDescriptor_(TxDescriptor* descriptor) {
+        if (!descriptor) return;
+#if STM_WW_VERIFY_LOGIC_MODE
+        // VERIFY mode deliberately has no physical EBR reclamation: published
+        // records are retained so logic tests can keep raw white-box tokens.
+        (void)descriptor;
+#else
+        EBRManager::instance()->retire(descriptor);
+#endif
+    }
+
     void cleanupResources() {
         read_set_.clear();
         write_set_.clear();
         allocated_ptrs_.clear();
 
         is_active_ = false;
+        TxDescriptor* finished_descriptor = my_desc_;
         if (my_desc_) {
-            // 临时策略：TxDescriptor 先不回收，优先保证并发正确性验证稳定。
-            // 原因：高并发压测下 descriptor 回收路径仍存在竞态风险。
             my_desc_ = nullptr;
         }
+        // All records have already been removed/retired by owner or helper.
+        // Retire the descriptor after that point, before leaving this EBR
+        // section, so readers that loaded a record remain protected.
+        retireDescriptor_(finished_descriptor);
         leaveEpoch();
     }
 
