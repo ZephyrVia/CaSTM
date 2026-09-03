@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+#include <condition_variable>
+#include <cstddef>
+#include <mutex>
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -43,6 +46,41 @@ struct TrackedObject {
 
 // 初始化静态计数器
 std::atomic<int> TrackedObject::alive_count{0};
+
+// 使用系统堆分配，避免这个协议测试同时依赖 ThreadHeap 的回收路径。
+struct EpochProbe {
+    explicit EpochProbe(std::atomic<int>& destruction_count)
+        : destruction_count_(destruction_count) {}
+
+    ~EpochProbe() {
+        destruction_count_.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    std::atomic<int>& destruction_count_;
+};
+
+// C++17 没有 std::latch；这个单调 phase gate 用于精确排列 EBR 事件，
+// 不依赖 sleep 或调度时序。
+class PhaseGate {
+public:
+    void signal() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            ++phase_;
+        }
+        condition_.notify_all();
+    }
+
+    void wait_until(int target) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        condition_.wait(lock, [this, target] { return phase_ >= target; });
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    int phase_ = 0;
+};
 
 // ==========================================
 // 2. 测试夹具
@@ -180,4 +218,148 @@ TEST_F(EBRManagerTest, CustomDeleterWithStandardHeap) {
 
     cleanUpGarbage();
     EXPECT_EQ(TrackedObject::alive_count.load(), 0);
+}
+
+// 回归：线程持有旧的 announced epoch E 时，全局纪元可能已经推进到 E+1。
+// 退休对象必须按实际全局纪元入桶；否则旧代码会在 E+2 收集 E 桶，
+// 而仍处于 E+1 的读者尚未离开临界区。
+TEST_F(EBRManagerTest, RetireUsesGlobalEpochWhenOwnerSlotIsBehind) {
+    EBRManager* mgr = EBRManager::instance();
+    std::atomic<int> destruction_count{0};
+    std::atomic<EpochProbe*> observed{nullptr};
+    EpochProbe* victim = new EpochProbe(destruction_count);
+
+    PhaseGate owner_entered;
+    PhaseGate allow_owner_retire;
+    PhaseGate reader_entered;
+    PhaseGate retired;
+    PhaseGate allow_reader_leave;
+
+    // T1 stays announced at E while the coordinator advances the global
+    // epoch to E+1, then retires the object at that global epoch.
+    std::thread owner([&] {
+        mgr->enter();
+        owner_entered.signal();
+        allow_owner_retire.wait_until(1);
+
+        mgr->retire(victim);
+        retired.signal();
+        mgr->leave();
+    });
+
+    owner_entered.wait_until(1);
+
+    // T1's active E slot does not block E -> E+1: at the current epoch E,
+    // the EBR advance rule only rejects active slots strictly older than E.
+    std::thread advance_to_e1([&] {
+        mgr->enter();
+        mgr->leave();
+    });
+    advance_to_e1.join();
+
+    // T2 enters at E+1 and obtains the pointer before T1 retires it.
+    std::thread reader([&] {
+        mgr->enter();
+        observed.store(victim, std::memory_order_release);
+        reader_entered.signal();
+        allow_reader_leave.wait_until(1);
+        mgr->leave();
+    });
+    reader_entered.wait_until(1);
+
+    allow_owner_retire.signal();
+    retired.wait_until(1);
+    owner.join();
+
+    // T1's leave now advances E+1 -> E+2 and collects bucket E. The old
+    // implementation incorrectly placed victim in bucket E; the fixed
+    // implementation places it in bucket E+1, so T2 still protects it here.
+
+    EXPECT_EQ(observed.load(std::memory_order_acquire), victim);
+    EXPECT_EQ(destruction_count.load(std::memory_order_relaxed), 0)
+        << "an active E+1 reader must prevent reclaim at E+2";
+
+    allow_reader_leave.signal();
+    reader.join();
+
+    // Once T2 leaves, one more deterministic leave supplies the next grace
+    // period and collects the E+1 bucket.
+    std::thread advance_after_reader([&] {
+        mgr->enter();
+        mgr->leave();
+    });
+    advance_after_reader.join();
+
+    EXPECT_EQ(destruction_count.load(std::memory_order_relaxed), 1);
+}
+
+// 边界 A：退休线程的 announced epoch 落后一代时，必须使用退休瞬间的
+// 全局纪元。这里没有读者参与，单纯观察 E+2 是否错误收集了 E 桶，
+// 从而把“入 E+1 桶”这一点与上面的 reader 回归分开验证。
+TEST_F(EBRManagerTest, RetireAtLaggingSlotUsesCurrentGlobalEpoch) {
+    EBRManager* mgr = EBRManager::instance();
+    std::atomic<int> destruction_count{0};
+    EpochProbe* victim = new EpochProbe(destruction_count);
+
+    PhaseGate owner_entered;
+    PhaseGate allow_retire;
+
+    std::thread owner([&] {
+        mgr->enter();
+        owner_entered.signal();
+        allow_retire.wait_until(1);
+        mgr->retire(victim);
+        mgr->leave();
+    });
+
+    owner_entered.wait_until(1);
+
+    // Keep the owner announced at E while another thread advances G to E+1.
+    std::thread advance_to_e1([&] {
+        mgr->enter();
+        mgr->leave();
+    });
+    advance_to_e1.join();
+
+    allow_retire.signal();
+    owner.join();
+
+    // Owner leave advances E+1 -> E+2. A victim tagged with E would be
+    // reclaimed now; a victim tagged with the actual global E+1 must remain.
+    EXPECT_EQ(destruction_count.load(std::memory_order_relaxed), 0);
+
+    std::thread advance_to_e3([&] {
+        mgr->enter();
+        mgr->leave();
+    });
+    advance_to_e3.join();
+
+    EXPECT_EQ(destruction_count.load(std::memory_order_relaxed), 1);
+}
+
+// 边界 B：槽位 epoch 与全局 epoch 相同时，仍应按该全局 epoch 入桶，
+// 两次确定性的纪元推进后即可回收，不应被错误地再延迟一个轮次。
+TEST_F(EBRManagerTest, RetireAtCurrentGlobalEpochUsesNormalGracePeriod) {
+    EBRManager* mgr = EBRManager::instance();
+    std::atomic<int> destruction_count{0};
+    EpochProbe* victim = new EpochProbe(destruction_count);
+
+    std::thread retire_at_current_epoch([&] {
+        mgr->enter();
+        mgr->retire(victim);
+        mgr->leave();
+    });
+    retire_at_current_epoch.join();
+
+    // The retire thread advances G -> G+1 on leave, but bucket G is collected
+    // only after the next advance to G+2.
+    EXPECT_EQ(destruction_count.load(std::memory_order_relaxed), 0);
+
+    std::thread advance_to_collection([&] {
+        mgr->enter();
+        mgr->leave();
+    });
+    advance_to_collection.join();
+
+    EXPECT_EQ(destruction_count.load(std::memory_order_relaxed), 1);
 }

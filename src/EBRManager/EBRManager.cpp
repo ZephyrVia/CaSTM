@@ -102,15 +102,9 @@ void EBRManager::retire(void* ptr, void (*deleter)(void*)) {
     void* gnode_mem = ::operator new(sizeof(GarbageNode));
     GarbageNode* g_node = new(gnode_mem) GarbageNode(ptr, deleter);
 
-    // 使用本线程已登记的纪元（而非重新读全局纪元）：retire 发生在
-    // enter/leave 临界区内，登记纪元可能落后于全局值，把垃圾挂到
-    // 更早的列表只会延后回收，方向安全。
-    uint64_t current_epoch = global_epoch_.load(std::memory_order_acquire);
-    if (ThreadSlot* slot = getLocalSlot_()) {
-        uint64_t slot_state = slot->loadState();
-        if (ThreadSlot::isRegistered(slot_state)) {
-            current_epoch = ThreadSlot::unpackEpoch(slot_state);
-        }
-    }
-    this->garbage_lists_[current_epoch % kNumEpochLists].pushNode(g_node);
+    // 退休发生时以全局纪元作为回收账本的时间戳，而不是使用本线程
+    // announced epoch。线程可能仍停留在 E，但全局纪元已经推进到 E+1；
+    // 若把对象放入 E 桶，collect(G-2) 会在 G=E+2 时提前回收它。
+    uint64_t retire_epoch = global_epoch_.load(std::memory_order_acquire);
+    this->garbage_lists_[retire_epoch % kNumEpochLists].pushNode(g_node);
 }
