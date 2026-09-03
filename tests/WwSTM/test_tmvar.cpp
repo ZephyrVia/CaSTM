@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "WwSTM/TMVar.hpp"
+#include "WwSTM/TxContext.hpp"
 #include "WwSTM/TxDescriptor.hpp"
 #include "WwSTM/TxStatus.hpp"
 #include "EBRManager/EBRManager.hpp"
@@ -54,6 +55,26 @@ struct HeadChangeState {
 
 HeadChangeState* active_head_change_state = nullptr;
 
+struct CommitPauseState {
+    PhaseGate entered;
+    PhaseGate release;
+    TxDescriptor* descriptor = nullptr;
+};
+
+CommitPauseState* active_prepare_pause_state = nullptr;
+CommitPauseState* active_committed_pause_state = nullptr;
+
+template<typename T>
+bool commitDirect(TMVar<T>& var,
+                  void* record,
+                  TxDescriptor& tx,
+                  uint64_t commit_ts) {
+    if (!var.prepareCommit(record, &tx, commit_ts)) return false;
+    if (!TxStatusHelper::tryCommit(tx.status)) return false;
+    var.helpComplete(record);
+    return true;
+}
+
 void changeHeadDuringRead(TMVar<int>& var) {
     auto* state = active_head_change_state;
     if (!state || !state->first_hook.exchange(false, std::memory_order_acq_rel)) {
@@ -62,6 +83,21 @@ void changeHeadDuringRead(TMVar<int>& var) {
 
     state->writer->status.store(TxStatus::ABORTED, std::memory_order_release);
     var.debugHelpCurrentRecordForTest();
+}
+
+void pauseAfterPrepare(TxContext& tx) {
+    auto* state = active_prepare_pause_state;
+    if (!state) return;
+    state->descriptor = tx.debugDescriptorForTest();
+    state->entered.signal();
+    state->release.wait_until(1);
+}
+
+void pauseAfterCommitted(TxContext&) {
+    auto* state = active_committed_pause_state;
+    if (!state) return;
+    state->entered.signal();
+    state->release.wait_until(1);
 }
 
 } // namespace
@@ -108,8 +144,7 @@ TEST_F(TMVarTest, ReadYourOwnWrites) {
     ASSERT_EQ(conflict, nullptr);
     ASSERT_EQ(var.readProxy(&tx), 20);
 
-    tx.status.store(TxStatus::COMMITTED, std::memory_order_release);
-    ASSERT_TRUE(var.commitReleaseRecord(105));
+    ASSERT_TRUE(commitDirect(var, rec, tx, 105));
 
     TxDescriptor tx2(200);
     ASSERT_EQ(var.readProxy(&tx2), 20);
@@ -123,11 +158,11 @@ TEST_F(TMVarTest, IsolationSnapshotRead) {
     int val = 200;
     TxDescriptor* conflict = nullptr;
 
-    ASSERT_NE(var.tryWriteAndGetRecord(&tx_writer, &val, conflict), nullptr);
+    void* record = var.tryWriteAndGetRecord(&tx_writer, &val, conflict);
+    ASSERT_NE(record, nullptr);
     ASSERT_EQ(var.readProxy(&tx_reader), 100);
 
-    tx_writer.status.store(TxStatus::COMMITTED, std::memory_order_release);
-    ASSERT_TRUE(var.commitReleaseRecord(15));
+    ASSERT_TRUE(commitDirect(var, record, tx_writer, 15));
     ASSERT_EQ(var.readProxy(&tx_reader), 200);
 }
 
@@ -139,13 +174,13 @@ TEST_F(TMVarTest, WriteWriteConflict) {
     int val2 = 30;
     TxDescriptor* conflict = nullptr;
 
-    ASSERT_NE(var.tryWriteAndGetRecord(&tx1, &val1, conflict), nullptr);
+    void* record = var.tryWriteAndGetRecord(&tx1, &val1, conflict);
+    ASSERT_NE(record, nullptr);
     conflict = nullptr;
     ASSERT_EQ(var.tryWriteAndGetRecord(&tx2, &val2, conflict), nullptr);
     ASSERT_EQ(conflict, &tx1);
 
-    tx1.status.store(TxStatus::COMMITTED, std::memory_order_release);
-    ASSERT_TRUE(var.commitReleaseRecord(110));
+    ASSERT_TRUE(commitDirect(var, record, tx1, 110));
 }
 
 TEST_F(TMVarTest, ReentrantWriteReusesOneLocatorAndDraft) {
@@ -168,11 +203,37 @@ TEST_F(TMVarTest, ReentrantWriteReusesOneLocatorAndDraft) {
     ASSERT_EQ(first_record->new_node->payload, 3);
     ASSERT_EQ(var.readProxy(&tx), 3);
 
-    tx.status.store(TxStatus::COMMITTED, std::memory_order_release);
-    ASSERT_TRUE(var.commitReleaseRecord(60));
+    ASSERT_TRUE(commitDirect(var, first, tx, 60));
 
     TxDescriptor tx_check(70);
     ASSERT_EQ(var.readProxy(&tx_check), 3);
+}
+
+TEST_F(TMVarTest, PrepareFreezesDraftAndPublishesFinalTimestamp) {
+    TMVar<int> var(0);
+    TxDescriptor tx(50);
+    TxDescriptor* conflict = nullptr;
+    int first_value = 2;
+    int late_value = 3;
+
+    void* record = var.tryWriteAndGetRecord(&tx, &first_value, conflict);
+    ASSERT_NE(record, nullptr);
+    auto* typed_record = static_cast<typename TMVar<int>::RecordT*>(record);
+
+    ASSERT_TRUE(var.prepareCommit(record, &tx, 75));
+    ASSERT_TRUE(typed_record->prepared.load(std::memory_order_acquire));
+    ASSERT_EQ(typed_record->new_node->loadWriteTs(), 75);
+
+    conflict = nullptr;
+    ASSERT_EQ(var.tryWriteAndGetRecord(&tx, &late_value, conflict), nullptr);
+    ASSERT_EQ(conflict, nullptr);
+    ASSERT_EQ(typed_record->new_node->payload, 2);
+
+    ASSERT_TRUE(TxStatusHelper::tryCommit(tx.status));
+    var.helpComplete(record);
+    TxDescriptor reader(80);
+    ASSERT_EQ(var.readProxy(&reader), 2);
+    ASSERT_EQ(var.getDataVersion(), 75);
 }
 
 TEST_F(TMVarTest, AbortAndRollback) {
@@ -191,9 +252,9 @@ TEST_F(TMVarTest, AbortAndRollback) {
     TxDescriptor tx2(200);
     ASSERT_EQ(var.readProxy(&tx2), 50);
     int val2 = 60;
-    ASSERT_NE(var.tryWriteAndGetRecord(&tx2, &val2, conflict), nullptr);
-    tx2.status.store(TxStatus::COMMITTED, std::memory_order_release);
-    ASSERT_TRUE(var.commitReleaseRecord(210));
+    void* record2 = var.tryWriteAndGetRecord(&tx2, &val2, conflict);
+    ASSERT_NE(record2, nullptr);
+    ASSERT_TRUE(commitDirect(var, record2, tx2, 210));
 }
 
 TEST_F(TMVarTest, AbortedRecordReadSnapshotUsesOldNode) {
@@ -245,8 +306,8 @@ TEST_F(TMVarTest, CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten) {
     auto* raw_record = var.tryWriteAndGetRecord(&writer, &draft, conflict);
     ASSERT_NE(raw_record, nullptr);
     auto* record = static_cast<typename TMVar<int>::RecordT*>(raw_record);
-    record->new_node->storeWriteTs(15);
-    writer.status.store(TxStatus::COMMITTED, std::memory_order_release);
+    ASSERT_TRUE(var.prepareCommit(raw_record, &writer, 15));
+    ASSERT_TRUE(TxStatusHelper::tryCommit(writer.status));
 
     ASSERT_EQ(var.debugLoadRecordForTest(), record);
     auto snapshot = var.readSnapshot(&reader);
@@ -257,6 +318,171 @@ TEST_F(TMVarTest, CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten) {
 
     ASSERT_TRUE(var.debugHelpCurrentRecordForTest());
     ASSERT_EQ(var.debugLoadNodeForTest(), record->new_node);
+}
+
+TEST_F(TMVarTest, MultiVariableCommitLinearizesAtDescriptorStatus) {
+    TMVar<int> x(10);
+    TMVar<int> y(20);
+    CommitPauseState state;
+    std::atomic<bool> committed{false};
+
+    active_prepare_pause_state = &state;
+    TxContext::setPrepareHook(&pauseAfterPrepare);
+    std::thread writer([&] {
+        TxContext tx;
+        tx.write(&x, 11);
+        tx.write(&y, 21);
+        committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    state.entered.wait_until(1);
+    ASSERT_NE(state.descriptor, nullptr);
+    ASSERT_EQ(state.descriptor->status.load(std::memory_order_acquire), TxStatus::ACTIVE);
+
+    TxContext reader;
+    ASSERT_EQ(reader.read(&x), 10);
+    ASSERT_EQ(reader.read(&y), 20);
+    ASSERT_TRUE(reader.commit());
+
+    state.release.signal();
+    writer.join();
+    TxContext::clearPrepareHook();
+    active_prepare_pause_state = nullptr;
+
+    ASSERT_TRUE(committed.load(std::memory_order_acquire));
+
+    TxContext committed_reader;
+    ASSERT_EQ(committed_reader.read(&x), 11);
+    ASSERT_EQ(committed_reader.read(&y), 21);
+    ASSERT_TRUE(committed_reader.commit());
+}
+
+TEST_F(TMVarTest, AbortMultiVariableKeepsOldLogicalView) {
+    TMVar<int> x(10);
+    TMVar<int> y(20);
+    CommitPauseState state;
+    std::atomic<bool> committed{true};
+
+    active_prepare_pause_state = &state;
+    TxContext::setPrepareHook(&pauseAfterPrepare);
+    std::thread writer([&] {
+        TxContext tx;
+        tx.write(&x, 11);
+        tx.write(&y, 21);
+        committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    state.entered.wait_until(1);
+    ASSERT_NE(state.descriptor, nullptr);
+
+    TxContext reader;
+    ASSERT_EQ(reader.read(&x), 10);
+    ASSERT_EQ(reader.read(&y), 20);
+
+    state.descriptor->status.store(TxStatus::ABORTED, std::memory_order_release);
+    state.release.signal();
+    writer.join();
+    TxContext::clearPrepareHook();
+    active_prepare_pause_state = nullptr;
+
+    ASSERT_FALSE(committed.load(std::memory_order_acquire));
+    ASSERT_TRUE(reader.commit());
+
+    TxContext verifier;
+    ASSERT_EQ(verifier.read(&x), 10);
+    ASSERT_EQ(verifier.read(&y), 20);
+    ASSERT_TRUE(verifier.commit());
+}
+
+TEST_F(TMVarTest, MultiVariableAtomicityStress) {
+    TMVar<int> x(0);
+    TMVar<int> y(0);
+    std::atomic<int> next_value{1};
+    std::atomic<int> mixed_snapshots{0};
+    std::atomic<int> successful_reads{0};
+
+    auto writer = [&] {
+        TxContext tx;
+        for (int i = 0; i < 100; ++i) {
+            bool committed = false;
+            while (!committed) {
+                tx.begin();
+                const int value = next_value.fetch_add(1, std::memory_order_relaxed);
+                tx.write(&x, value);
+                if (!tx.isActive()) continue;
+                tx.write(&y, value);
+                if (!tx.isActive()) continue;
+                committed = tx.commit();
+            }
+        }
+    };
+
+    auto reader = [&] {
+        TxContext tx;
+        for (int i = 0; i < 200; ++i) {
+            bool committed = false;
+            while (!committed) {
+                tx.begin();
+                const int x_value = tx.read(&x);
+                if (!tx.isActive()) continue;
+                const int y_value = tx.read(&y);
+                if (!tx.isActive()) continue;
+
+                committed = tx.commit();
+                if (committed) {
+                    successful_reads.fetch_add(1, std::memory_order_relaxed);
+                    if (x_value != y_value) {
+                        mixed_snapshots.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            }
+        }
+    };
+
+    std::vector<std::thread> writers;
+    std::vector<std::thread> readers;
+    writers.reserve(4);
+    readers.reserve(2);
+    for (int i = 0; i < 4; ++i) writers.emplace_back(writer);
+    for (int i = 0; i < 2; ++i) readers.emplace_back(reader);
+    for (auto& thread : writers) thread.join();
+    for (auto& thread : readers) thread.join();
+
+    ASSERT_EQ(mixed_snapshots.load(std::memory_order_relaxed), 0);
+    ASSERT_GT(successful_reads.load(std::memory_order_relaxed), 0);
+
+    TxContext verifier;
+    const int final_x = verifier.read(&x);
+    const int final_y = verifier.read(&y);
+    ASSERT_TRUE(verifier.commit());
+    ASSERT_EQ(final_x, final_y);
+}
+
+TEST_F(TMVarTest, PostCommitHelperRaceKeepsCommitSuccessful) {
+    TMVar<int> var(0);
+    CommitPauseState state;
+    std::atomic<bool> committed{false};
+
+    active_committed_pause_state = &state;
+    TxContext::setCommittedHook(&pauseAfterCommitted);
+    std::thread writer([&] {
+        TxContext tx;
+        tx.write(&var, 1);
+        committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    state.entered.wait_until(1);
+    ASSERT_TRUE(var.debugHelpCurrentRecordForTest());
+
+    state.release.signal();
+    writer.join();
+    TxContext::clearCommittedHook();
+    active_committed_pause_state = nullptr;
+
+    ASSERT_TRUE(committed.load(std::memory_order_acquire));
+    TxContext reader;
+    ASSERT_EQ(reader.read(&var), 1);
+    ASSERT_TRUE(reader.commit());
 }
 
 TEST_F(TMVarTest, HeadIdentityChangeRetriesSnapshot) {
@@ -310,8 +536,8 @@ TEST_F(TMVarTest, HelpingFlattensAbortedAndCommittedLocators) {
     ASSERT_NE(committed_raw, nullptr);
     auto* committed_record = static_cast<typename TMVar<int>::RecordT*>(committed_raw);
     auto* committed_new = committed_record->new_node;
-    committed_new->storeWriteTs(25);
-    committed_writer.status.store(TxStatus::COMMITTED, std::memory_order_release);
+    ASSERT_TRUE(committed_var.prepareCommit(committed_raw, &committed_writer, 25));
+    ASSERT_TRUE(TxStatusHelper::tryCommit(committed_writer.status));
     ASSERT_TRUE(committed_var.debugHelpCurrentRecordForTest());
     ASSERT_EQ(committed_var.debugLoadRecordForTest(), nullptr);
     ASSERT_EQ(committed_var.debugLoadNodeForTest(), committed_new);
@@ -333,8 +559,7 @@ TEST_F(TMVarTest, StealAbortedLockViaNodeGeneration) {
     ASSERT_NE(second, nullptr);
     ASSERT_EQ(var.readProxy(&tx_alive), 30);
 
-    tx_alive.status.store(TxStatus::COMMITTED, std::memory_order_release);
-    ASSERT_TRUE(var.commitReleaseRecord(210));
+    ASSERT_TRUE(commitDirect(var, second, tx_alive, 210));
     ASSERT_EQ(var.getDataVersion(), 210);
 }
 

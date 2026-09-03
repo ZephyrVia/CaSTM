@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 #include "TxStatus.hpp"
 #include "TierAlloc/common/GlobalConfig.hpp"
@@ -13,10 +14,22 @@ struct alignas(kCacheLineSize) TxDescriptor  {
 
     const uint64_t start_ts;
 
+    // Commit B uses this per-descriptor gate to serialize owner writes with
+    // the prepare phase.  It does not change descriptor reclamation: the
+    // descriptor remains intentionally unreclaimed for now.
+    mutable std::mutex write_gate;
+    std::atomic<bool> prepare_started;
+
     explicit TxDescriptor(uint64_t ts) 
         : status(TxStatus::ACTIVE)
         , start_ts(ts)
+        , prepare_started(false)
     {}
+
+    bool writePhaseOpen() const noexcept {
+        return status.load(std::memory_order_acquire) == TxStatus::ACTIVE
+            && !prepare_started.load(std::memory_order_acquire);
+    }
 
     virtual ~TxDescriptor() = default;
 

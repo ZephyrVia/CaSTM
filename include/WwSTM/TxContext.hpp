@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <mutex>
 
 #include "Config.hpp"
 #include "Logging.hpp"
@@ -39,6 +40,13 @@ private:
     std::vector<WriteLogEntry> write_set_;
     std::vector<void*> allocated_ptrs_; 
 
+#if STM_WW_TEST_HOOKS
+    using PrepareHook = void (*)(TxContext&);
+    using CommittedHook = void (*)(TxContext&);
+    inline static std::atomic<PrepareHook> prepare_hook_{nullptr};
+    inline static std::atomic<CommittedHook> committed_hook_{nullptr};
+#endif
+
 public:
     TxContext(const TxContext&) = delete;
     TxContext& operator=(const TxContext&) = delete;
@@ -46,6 +54,28 @@ public:
     TxContext() {
         startNewTransaction();
     }
+
+#if STM_WW_TEST_HOOKS
+    static void setPrepareHook(PrepareHook hook) noexcept {
+        prepare_hook_.store(hook, std::memory_order_release);
+    }
+
+    static void clearPrepareHook() noexcept {
+        setPrepareHook(nullptr);
+    }
+
+    static void setCommittedHook(CommittedHook hook) noexcept {
+        committed_hook_.store(hook, std::memory_order_release);
+    }
+
+    static void clearCommittedHook() noexcept {
+        setCommittedHook(nullptr);
+    }
+
+    TxDescriptor* debugDescriptorForTest() const noexcept {
+        return my_desc_;
+    }
+#endif
 
     ~TxContext() {
         if (my_desc_) {
@@ -74,6 +104,16 @@ public:
     bool commit() {
         if (!ensureActive()) return false;
 
+        // Freeze owner writes for the complete validate/prepare/status-CAS
+        // sequence.  TMVar::tryWriteAndGetRecord takes the same gate, so a
+        // concurrent self-write cannot mutate a draft after preparation.
+        std::unique_lock<std::mutex> prepare_lock(my_desc_->write_gate);
+        if (my_desc_->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+            abortTransaction();
+            return false;
+        }
+        my_desc_->prepare_started.store(true, std::memory_order_release);
+
         if (!validateReadSet()) {
             abortTransaction();
             return false;
@@ -84,23 +124,59 @@ public:
             return false;
         }
 
-        if (write_set_.empty()) {
-            cleanupResources();
-            return true;
+        const uint64_t commit_ts = write_set_.empty() ? 0 : GlobalClock::tick();
+        for (auto& entry : write_set_) {
+            if (!entry.var->prepareCommit(entry.record_ptr,
+                                          my_desc_,
+                                          commit_ts)) {
+                // No record has been logically committed yet.  The descriptor
+                // remains ACTIVE or has already been wounded, so abort can
+                // restore every prepared/installed generation.
+                abortTransaction();
+                return false;
+            }
         }
 
+#if STM_WW_TEST_HOOKS
+        if (!write_set_.empty()) {
+            if (auto hook = prepare_hook_.load(std::memory_order_acquire)) {
+                hook(*this);
+            }
+        }
+#endif
+
+        // The single transaction-level linearization point.  Every prepared
+        // WriteRecord now has its final payload and timestamp; after this CAS
+        // no path may turn the transaction into ABORTED.
         if (!TxStatusHelper::tryCommit(my_desc_->status)) {
+            if (my_desc_->status.load(std::memory_order_acquire)
+                == TxStatus::COMMITTED) {
+                // Another commit attempt (or a deterministic test hook) may
+                // have crossed the same irreversible point.  The logical
+                // result is still success; only physical cleanup remains.
+                for (const auto& entry : write_set_) {
+                    entry.var->helpComplete(entry.record_ptr);
+                }
+                cleanupResources();
+                return true;
+            }
             abortTransaction();
             return false;
         }
 
-        uint64_t commit_ts = GlobalClock::tick();
-        for (auto& entry : write_set_) {
-            if (!entry.var->commitReleaseRecord(entry.record_ptr, commit_ts)) {
-                // 状态已 COMMITTED，无法回滚；返回失败让上层观察到异常并停止计数。
-                cleanupResources();
-                return false;
+#if STM_WW_TEST_HOOKS
+        if (!write_set_.empty()) {
+            if (auto hook = committed_hook_.load(std::memory_order_acquire)) {
+                hook(*this);
             }
+        }
+#endif
+
+        // Physical cleanup is deliberately infallible.  A helper may have
+        // flattened any token already; that only changes where cleanup is
+        // performed, never the committed result.
+        for (const auto& entry : write_set_) {
+            entry.var->helpComplete(entry.record_ptr);
         }
 
         cleanupResources();
@@ -217,6 +293,7 @@ public:
             resolveConflict(conflict_tx);
 
             if (!ensureActive()) return;
+            if (my_desc_->prepare_started.load(std::memory_order_acquire)) return;
             if ((retry_count & 0x3F) == 0) {
                 std::this_thread::sleep_for(std::chrono::microseconds(1));
             } else {
@@ -238,7 +315,26 @@ private:
 
     void abortTransaction() {
         if (!my_desc_) return;
+        TxStatus observed = my_desc_->status.load(std::memory_order_acquire);
+        if (observed == TxStatus::COMMITTED) {
+            // COMMITTED is irreversible.  A failed status CAS, a destructor,
+            // or any late cleanup path must never restore an old value after
+            // the transaction has crossed its logical commit point.
+            is_active_ = false;
+            cleanupResources();
+            return;
+        }
+
         TxStatusHelper::tryAbort(my_desc_->status);
+        observed = my_desc_->status.load(std::memory_order_acquire);
+        if (observed == TxStatus::COMMITTED) {
+            // A concurrent status transition won the race while this caller
+            // was trying to abort.  The committed side owns cleanup.
+            is_active_ = false;
+            cleanupResources();
+            return;
+        }
+
         is_active_ = false;
         for (auto it = write_set_.rbegin(); it != write_set_.rend(); ++it) {
             it->var->abortRestoreData(it->record_ptr);
@@ -271,7 +367,7 @@ private:
     bool ensureActive() {
         if (!is_active_) return false;
         if (!my_desc_) return false;
-        if (my_desc_->status.load(std::memory_order_relaxed) == TxStatus::ABORTED) {
+        if (my_desc_->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
             is_active_ = false;
         }
         return is_active_;
@@ -307,7 +403,7 @@ private:
 
     bool validateWriteSetOwnership() {
         for (const auto& entry : write_set_) {
-            if (!entry.var->ownsRecord(entry.record_ptr, my_desc_)) {
+            if (!entry.var->validateForCommit(entry.record_ptr, my_desc_)) {
                 return false;
             }
         }

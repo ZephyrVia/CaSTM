@@ -17,11 +17,13 @@ struct WriteRecord {
     TxDescriptor* owner;    
     VersionNode<T>* old_node;
     VersionNode<T>* new_node;
+    std::atomic<bool> prepared;
 
     WriteRecord(TxDescriptor* tx, VersionNode<T>* old_v, VersionNode<T>* new_v)
         : owner(tx)
         , old_node(old_v)
         , new_node(new_v)
+        , prepared(false)
     {}
 
     WriteRecord(const WriteRecord&) = delete;

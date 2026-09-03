@@ -1,12 +1,12 @@
 # BUG-07：WwSTM single-head Locator 协议与实现
 
-状态：Commit A 已实现；Commit B 未开始
+状态：Commit B 已实现（待提交）
 
-审计基线：`f8d9c46 fix(wwstm): retire published write records after rollback`
+审计基线：`68ed73f docs: record single-head Commit A result`
 
 Commit A：`72ec885 refactor(wwstm): introduce single-head locator state`
 
-本文件保留前期设计审计，并在末尾记录 Commit A 的实际实现与验收结果。
+本文件保留前期设计审计，并记录 Commit A 到 Commit B 的协议差异、实际实现与验收结果。
 
 ## 结论
 
@@ -14,15 +14,16 @@ single-head 方向可行，并且能够从结构上消除当前 `data_ptr_ + rec
 authority 问题。但它不是只把两个成员合并成一个 tagged pointer：读快照、写集校验、
 commit/abort 清理和测试 API 都必须同步调整。
 
-此前阶段完成了协议审计；当前已按本文件的边界完成 Commit A。实施仍分成两个提交：
+此前阶段完成了协议审计；当前已按本文件的边界完成 Commit A 与 Commit B。两次提交保持
+独立，便于分别回滚和审查：
 
 1. Commit A：single-head、读快照和 helping 基础；
 2. Commit B：prepare-before-COMMITTED、唯一提交线性化点和多变量原子性。
 
-Commit A 暂时保留旧版 `TxContext::commit()` 的提交兼容路径，因此不宣称已经解决
-Commit B 的 prepare、partial commit 或多变量原子提交问题。
+Commit A 曾暂时保留旧版 `TxContext::commit()` 的提交兼容路径；Commit B 已将 prepare、
+partial commit 和多变量原子提交纳入同一个事务级状态协议。
 
-## 当前实现与目标的差距
+## Commit A 前实现与目标的差距（历史审计）
 
 ### 1. 共享状态存在两个入口
 
@@ -178,63 +179,70 @@ Wound-Wait 的年龄规则不应改变。但当前 bug 分支仍有按 `TxDescri
 时间戳平局的代码；若该分支尚未移植 BUG-05 的创建序号，应在 v2 中使用稳定的逻辑
 tie-breaker，不能把堆地址继续当作年龄依据。
 
-## commit/abort 必须同步重构（Commit B）
+## commit/abort 协议审计（Commit A 基线）
 
-当前 `TxContext::commit()` 在 `ACTIVE -> COMMITTED` 后，才逐个调用
-`commitReleaseRecord()`；而后者仍可能返回失败，当前代码甚至会让已经 COMMITTED 的
-事务返回 `false`。这与目标协议冲突。
+Commit A 的实际提交路径仍是“先完成事务状态转换，再逐个清理变量”：
 
-Commit A 保留了这条旧兼容路径，只把 `commitReleaseRecord()` 的物理清理改为
-`Record -> new_node`；它不再把 cleanup CAS 失败当作内存所有权失败，也不改变旧提交
-顺序的协议缺陷。`VersionNode::write_ts` 在 Commit A 中改为 atomic，以承受这条临时路径
-中“COMMITTED 后写入最终时间戳”的并发访问；Commit B 应把时间戳写入移到 prepare 阶段，
-届时可恢复为更严格的不可变发布语义。
+1. `TxContext::commit()` 验证读集和写集；
+2. 空写集直接清理并返回；
+3. 执行 `ACTIVE -> COMMITTED`；
+4. 调用 `commitReleaseRecord(record, commit_ts)`，在每个变量上写入最终时间戳并做
+   `Record -> new_node`；
+5. 任意清理接口仍可能返回 `false`，因此曾存在“descriptor 已 COMMITTED 但
+   `commit()` 返回失败”的协议缺口。
 
-Commit B 应改为：
+Commit A 已把 cleanup CAS 失败视为“helper 已完成或 head 已进入下一代”，不再重复
+retire；但它没有改变第 3 步早于第 4 步的顺序。`VersionNode::write_ts` 在该过渡期间
+改为 atomic，以承受 COMMITTED 后写入最终时间戳的并发读写。
 
-### Phase 1：validate
+## Commit A → Commit B 差异审计与实际实现
 
-- 验证 read set 的 snapshot；
-- 验证所有 write Record 仍由本事务占有；
-- 确认 status 仍为 ACTIVE。
+这次先按 Commit A 的代码逐条对照，再落地 Commit B，差异如下：
 
-验证失败只允许发生在 COMMITTED 之前。
+| 维度 | Commit A 基线 | Commit B 实现 |
+|---|---|---|
+| owner 写入与提交 | owner 可直接修改 draft，提交路径没有统一冻结点 | `TxDescriptor::write_gate` 串行化 owner 写与 prepare；`prepare_started` 后拒绝新写 |
+| 提交前检查 | validate 后立即做状态 CAS | validate read set、write ownership/token，再逐个 prepare |
+| 最终时间戳 | `COMMITTED` 后由 cleanup 写入 | `ACTIVE` 期间由 prepare 写入全部 `new_node->write_ts` |
+| 事务线性化 | 没有单独、稳定的多变量逻辑点 | 一次 `ACTIVE -> COMMITTED` CAS 是唯一逻辑提交点 |
+| cleanup 结果 | `commitReleaseRecord()` 的 bool 可能污染 commit 结果 | `helpComplete()` 为 void；CAS 失败只表示别人完成，不能回滚或返回失败 |
+| payload/Locator | Locator 已不可变，draft payload 可在提交前修改 | prepare 后 Record 与 draft 都冻结；COMMITTED 后只读 |
+| abort 竞态 | owner/helper 共享旧兼容清理入口 | 先 `ACTIVE -> ABORTED`，再 `Record -> old_node`；COMMITTED 绝不进入回滚 |
 
-### Phase 2：prepare
+当前 `TxContext::commit()` 的实际顺序是：
 
-- 获取一个 commit timestamp；
-- 在 status 仍为 ACTIVE 时，准备所有 draft `new_node->write_ts`；
-- 确认 COMMITTED 之后不再需要任何可能失败的工作。
+```text
+lock write_gate
+  -> prepare_started = true
+  -> validate read set
+  -> validate write ownership/token
+  -> 获取 commit_ts
+  -> prepare 所有 Record（写最终 timestamp，冻结 draft）
+  -> ACTIVE -> COMMITTED         ← 唯一逻辑线性化点
+  -> helpComplete 所有 Record    ← 可被 helper 抢先完成
+  -> cleanupResources()
+```
 
-### Phase 3：唯一提交点
+`TMVarBase` 对应拆成 `validateForCommit()`、`prepareCommit()` 和
+`helpComplete()`。`prepareCommit()` 只在 head 仍是本事务保存的 Record 且 descriptor
+仍为 ACTIVE 时成功；`helpComplete()` 不把 Record→Node 的 CAS 结果暴露为事务失败。
+事务写集仍可能短暂保存已被 helper 展平的 raw token，但 owner 在 EBR 保护期内使用它，
+且 cleanup 会先比较 head token，失去 head 身份后不再解引用或重复 retire。
 
-执行一次：
+因此，多变量事务在 COMMITTED 前只能被整体判为 ABORTED；一旦 descriptor CAS 成功，
+所有变量都按同一 descriptor 状态解释为 new，即使各变量的物理 flatten 尚未完成，也
+不会出现逻辑上的 partial commit。读者如果跨过该 CAS 观察到不同阶段，读集的 node
+identity/version 校验会使它在提交时 abort，而不是提交 mixed snapshot。
 
-```cpp
+状态转换仍是不可逆的：
+
+```text
 ACTIVE -> COMMITTED
+ACTIVE -> ABORTED
 ```
 
-该 CAS 是事务的逻辑提交线性化点。CAS 成功后 `commit()` 必须最终返回成功。
-
-### Phase 4：物理 cleanup/help
-
-逐个执行：
-
-```text
-Record(COMMITTED) -> new_node
-```
-
-cleanup CAS 失败只表示已经被 helper 完成，或 head 已进入下一代合法状态，不能再把
-事务判定为失败。`TMVarBase` 的 bool 接口需要拆成“prepare 是否成功”和“cleanup/help
-是否完成或已被别人完成”，避免把物理清理结果当作逻辑提交结果。
-
-Abort 则先执行 `ACTIVE -> ABORTED`，随后由 owner 或 helper 完成：
-
-```text
-Record(ABORTED) -> old_node
-```
-
-同样只有成功 CAS 的一方负责 retire；其他方 CAS 失败后只结束清理，不重复处理 record。
+`abortTransaction()` 在观察到 COMMITTED 时只做终态 cleanup；即便状态 CAS 失败是因为
+另一条路径已经完成 COMMITTED，也不再恢复 old node。
 
 ## 必须新增或改写的测试
 
@@ -253,7 +261,8 @@ Commit B 至少覆盖：
 1. 多变量事务不存在可成功提交的 partial commit；
 2. 某个 cleanup CAS 被人为失败时，事务仍保持 COMMITTED 且 commit 返回成功；
 3. status 已终态时 owner/helper 重复清理不会重复 retire；
-4. 高竞争写入、读集校验和 Wound-Wait 路径。
+4. prepare 后 draft 冻结，重复写不能改变已准备值；
+5. 高竞争写入、读集校验和 Wound-Wait 路径。
 
 当前 `ActiveRecordReadIgnoresStaleOldNode` / `AbortedRecordReadUsesStableData` 通过
 直接篡改 `old_node` 构造旧双指针病态；single-head 后应改为“head generation 与
@@ -269,12 +278,11 @@ snapshot 同源”的测试，不能继续依赖篡改 immutable Locator。
 - TxDescriptor 回收；
 - benchmark 和性能优化。
 
-结论是“可以实施，但需按上述接口边界实施”，不是直接接受当前 `TMVar.hpp` 的大块
-替换。尤其在确定 re-entrant write 的 draft 语义、快照验证接口和 commit cleanup 返回
-语义之前，不应开始 Commit A 的代码修改。上述前置条件已经在 Commit A 中落实，下面
-记录实际结果。
+前置审计的结论是“可以实施，但需按上述接口边界实施”，不是直接接受当时
+`TMVar.hpp` 的大块替换。re-entrant write 的 draft 语义、快照验证接口和 commit cleanup
+返回语义已经在 Commit A/B 中落实，下面记录两次提交的实际结果。
 
-## Commit A 实现与验收
+## Commit A 历史实现与验收
 
 实现内容：
 
@@ -303,11 +311,31 @@ snapshot 同源”的测试，不能继续依赖篡改 immutable Locator。
 UBSan 仍会报告项目既有的 `TxDescriptor alignas(64)` 对齐问题；本 Commit A 按实施边界
 未处理该独立问题。运行验收时关闭 UBSan halt，避免该已知诊断阻断 ASan 结果。
 
-## Commit B 余项
+## Commit B 实现与验收
 
-- prepare 阶段写入最终 commit timestamp；
-- 将 `ACTIVE -> COMMITTED` 变为唯一逻辑提交点，清理失败不得改变提交结果；
-- 处理多变量事务的 partial commit/原子性；
-- 为 owner/helper 重复清理建立更完整的接口语义，并补齐故障注入测试。
+实现提交：`refactor(wwstm): make descriptor commit the transaction linearization point`
 
-本次未改 EBR、allocator、Wound-Wait 年龄策略、TxDescriptor 回收/alignment 或 OccSTM。
+实现文件：
+
+1. `TxDescriptor` 增加 owner 写门和 prepare 状态；
+2. `WriteRecord` 增加 prepared 状态，`VersionNode` 的最终 timestamp 在 COMMITTED 前写入；
+3. `TMVarBase` 拆分 validate/prepare/help 接口，保留 single-head tagged head 和 EBR
+   退休规则；
+4. `TxContext::commit()` 按 validate → prepare → descriptor CAS → infallible help 顺序
+   执行，COMMITTED 后不再走 abort 回滚；
+5. 增加 prepare 冻结、COMMITTED/ABORTED before flatten、多变量原子提交、helper 竞争、
+   token-only cleanup 和多变量并发 snapshot 回归。
+
+本次验收结果：
+
+| 验证 | 结果 |
+| --- | --- |
+| VERIFY 全量 ×20 | 通过 |
+| mode=0 全量 ×20 | 通过 |
+| VERIFY/mode=0 高竞争 Ww ×100 | 各 100/100 通过 |
+| VERIFY/mode=0/ASan 多变量原子性压力 ×100 | 各 100/100 通过 |
+| ASan+UBSan（`detect_leaks=0`）全量 | 32 项通过；无 UAF、double-free、invalid-free |
+| no-hooks（`STM_WW_TEST_HOOKS=0`）生产头文件编译 | 通过 |
+
+已知范围外问题仍不变：TxDescriptor 回收/alignment、EBR/allocator 的后续性能与精确
+回收、Wound-Wait 年龄策略、benchmark 和 OccSTM。本提交没有改动这些部分。

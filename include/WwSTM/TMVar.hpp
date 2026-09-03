@@ -33,8 +33,12 @@ struct ReadSnapshot {
 struct TMVarBase {
     virtual ~TMVarBase() = default;
 
-    virtual bool ownsRecord(void* saved_record_ptr, const TxDescriptor* owner) const = 0;
-    virtual bool commitReleaseRecord(void* saved_record_ptr, uint64_t commit_ts) = 0;
+    virtual bool validateForCommit(void* saved_record_ptr,
+                                   const TxDescriptor* owner) const = 0;
+    virtual bool prepareCommit(void* saved_record_ptr,
+                               TxDescriptor* owner,
+                               uint64_t commit_ts) = 0;
+    virtual void helpComplete(void* saved_record_ptr) = 0;
     virtual void abortRestoreData(void* saved_record_ptr) = 0;
     virtual bool validateReadSnapshot(const void* node_ptr,
                                       uint64_t version,
@@ -194,10 +198,6 @@ private:
         retireOrLeak(unpackNode_(raw));
     }
 
-    RecordT* debugLoadRecord_() const noexcept {
-        return unpackRecord_(head_.load(std::memory_order_acquire));
-    }
-
 public:
     template<typename... Args>
     explicit TMVar(Args&&... args) : head_(0) {
@@ -294,6 +294,11 @@ public:
         out_conflict = nullptr;
         if (!tx || !val_ptr) return nullptr;
 
+        // Serialize owner draft mutation with TxContext's prepare phase.
+        // A write that starts after prepare has begun is rejected before it
+        // can touch a published draft.
+        std::unique_lock<std::mutex> tx_lock(tx->write_gate);
+
 #if STM_WW_VERIFY_LOGIC_MODE
         std::lock_guard<std::mutex> lk(verify_mu_);
 #endif
@@ -302,14 +307,15 @@ public:
         int retry_count = 0;
 
         while (++retry_count <= kTryWriteRetryLimit) {
-            if (tx->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+            if (!tx->writePhaseOpen()) {
                 return nullptr;
             }
 
             HeadWord observed = head_.load(std::memory_order_acquire);
             if (RecordT* current = unpackRecord_(observed)) {
                 if (current->owner == tx) {
-                    if (tx->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+                    if (!tx->writePhaseOpen()
+                        || current->prepared.load(std::memory_order_acquire)) {
                         return nullptr;
                     }
 
@@ -319,7 +325,7 @@ public:
                                   "re-entrant WwSTM writes require assignable T");
                     current->new_node->payload = *static_cast<const T*>(val_ptr);
 
-                    if (tx->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+                    if (!tx->writePhaseOpen()) {
                         return nullptr;
                     }
                     return current;
@@ -364,8 +370,8 @@ public:
         return nullptr;
     }
 
-    bool ownsRecord(void* saved_record_ptr,
-                    const TxDescriptor* owner) const override {
+    bool validateForCommit(void* saved_record_ptr,
+                           const TxDescriptor* owner) const override {
         auto* record = static_cast<RecordT*>(saved_record_ptr);
         if (!record || !owner) return false;
 #if STM_WW_VERIFY_LOGIC_MODE
@@ -400,45 +406,60 @@ public:
             && record->old_node->loadWriteTs() == version;
     }
 
-    bool commitReleaseRecord(void* saved_record_ptr,
-                             uint64_t commit_ts) override {
+    bool prepareCommit(void* saved_record_ptr,
+                       TxDescriptor* owner,
+                       uint64_t commit_ts) override {
 #if STM_WW_VERIFY_LOGIC_MODE
         std::lock_guard<std::mutex> lk(verify_mu_);
 #endif
         auto* record = static_cast<RecordT*>(saved_record_ptr);
-        if (!record) return false;
+        if (!record || !owner) return false;
 
-        // A terminal record may already have been flattened by a helper
-        // before the owner reaches this compatibility cleanup path.  The
-        // write set still contains the raw token until cleanupResources(),
-        // so do not dereference it unless it is still the current head.
         HeadWord expected = packRecord_(record);
         if (head_.load(std::memory_order_acquire) != expected) {
-            return true;
+            return false;
+        }
+        if (record->owner != owner
+            || owner->status.load(std::memory_order_acquire) != TxStatus::ACTIVE) {
+            return false;
         }
 
-        // Commit A compatibility: the timestamp is still supplied by the
-        // legacy post-COMMITTED cleanup caller.  Commit B moves this store to
-        // prepare, before the status CAS.
+        // Preparation is idempotent for the same commit timestamp, but never
+        // rewrites a frozen draft.  TxContext holds owner->write_gate while
+        // it executes the complete validate/prepare/commit sequence.
+        if (record->prepared.load(std::memory_order_acquire)) {
+            return record->new_node->loadWriteTs() == commit_ts;
+        }
+
+        // Direct callers and TxContext both use this bit as the owner-side
+        // write freeze.  TxContext sets it before validation; setting it here
+        // as well makes the lower-level prepare API safe to use on its own.
+        owner->prepare_started.store(true, std::memory_order_release);
         record->new_node->storeWriteTs(commit_ts);
-
-        if (head_.compare_exchange_strong(expected,
-                                          packNode_(record->new_node),
-                                          std::memory_order_acq_rel,
-                                          std::memory_order_acquire)) {
-            retireOrLeak(record->old_node);
-            retireOrLeak(record);
-        }
-
-        // Once status is COMMITTED, losing this CAS means a helper or a later
-        // generation completed the physical flatten.  It is not a failure.
-        return true;
+        record->prepared.store(true, std::memory_order_release);
+        return owner->status.load(std::memory_order_acquire) == TxStatus::ACTIVE;
     }
 
-    // 兼容旧测试调用方式：直接提交当前锁记录。
-    bool commitReleaseRecord(uint64_t commit_ts) {
-        RecordT* current = debugLoadRecord_();
-        return commitReleaseRecord(static_cast<void*>(current), commit_ts);
+    void helpComplete(void* saved_record_ptr) override {
+        auto* record = static_cast<RecordT*>(saved_record_ptr);
+        if (!record || !record->owner) return;
+#if STM_WW_VERIFY_LOGIC_MODE
+        std::lock_guard<std::mutex> lk(verify_mu_);
+#endif
+
+        // The owner may still retain a raw write-set token after another
+        // thread has flattened and retired this generation.  Treat head
+        // identity as a cleanup fast path, not as a transaction failure, and
+        // do not dereference a token that is no longer the current root.
+        HeadWord expected = packRecord_(record);
+        if (head_.load(std::memory_order_acquire) != expected) {
+            return;
+        }
+
+        TxStatus status = record->owner->status.load(std::memory_order_acquire);
+        if (status == TxStatus::COMMITTED || status == TxStatus::ABORTED) {
+            helpResolveRecord_(record, status);
+        }
     }
 
     void abortRestoreData(void* saved_record_ptr) override {

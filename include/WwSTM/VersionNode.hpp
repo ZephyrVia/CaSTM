@@ -10,10 +10,9 @@ namespace detail {
 
 template<typename T>
 struct VersionNode {
-    // Commit A keeps the legacy compatibility path, where the final commit
-    // timestamp is assigned during post-COMMITTED cleanup.  Atomic access
-    // prevents that temporary ordering from becoming a C++ data race;
-    // Commit B will move the store into its prepare phase.
+    // Commit B assigns the final timestamp during preparation, before the
+    // transaction descriptor becomes COMMITTED.  Atomic access keeps reads
+    // well-defined while helpers observe and flatten a published record.
     std::atomic<uint64_t> write_ts;  // 写入时间戳
     T payload;          // 实际数据
 
