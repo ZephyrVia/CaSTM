@@ -21,6 +21,7 @@ add_executable(run_tests
     WwSTM/test_STM_Tree.cpp
     WwSTM/test_stm_math.cpp
     WwSTM/test_tmvar.cpp
+    WwSTM/test_txdescriptor.cpp
     WwSTM/test_stm_linkedlist.cpp
 )
 
