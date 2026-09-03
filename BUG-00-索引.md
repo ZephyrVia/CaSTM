@@ -11,6 +11,6 @@
 | BUG-04 | [WwSTM published WriteRecord 生命周期](BUG-04-WwSTM-WriteRecord生命周期.md) | 已修复 | `f8d9c46` |
 | BUG-05 | [Wound-Wait 平局裁决顺序依赖](BUG-05-WoundWait平局裁决顺序依赖.md) | main 谱系已修复，bug 分支暂缓 | `8b3cdf5` |
 | BUG-06 | [WwSTM 版本-值偏斜导致丢失更新](BUG-06-WwSTM版本值偏斜丢失更新.md) | 已修复 | `ffc7f14` |
-| BUG-07 | [WwSTM single-head Locator 协议设计审计](BUG-07-WwSTM-single-head-Locator协议设计审计.md) | 设计审计完成，尚未实施 | — |
+| BUG-07 | [WwSTM single-head Locator 协议与实现](BUG-07-WwSTM-single-head-Locator协议设计审计.md) | Commit A 已实现，Commit B 未开始 | `72ec885` |
 
 最后更新：2026-09

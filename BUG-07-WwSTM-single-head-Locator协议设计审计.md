@@ -4,6 +4,8 @@
 
 审计基线：`f8d9c46 fix(wwstm): retire published write records after rollback`
 
+Commit A：`72ec885 refactor(wwstm): introduce single-head locator state`
+
 本文件保留前期设计审计，并在末尾记录 Commit A 的实际实现与验收结果。
 
 ## 结论
