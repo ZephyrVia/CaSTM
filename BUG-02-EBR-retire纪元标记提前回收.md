@@ -1,5 +1,8 @@
 # BUG-02：EBR retire 纪元标记错误导致提前回收
 
+> 历史修复记录：本文的实现片段与验收次数对应所列提交。当前协议见
+> [设计说明](OSTM_WW.md)，当前启用、跳过与禁用范围见[测试说明](docs/testing.md)。
+
 状态：已修复
 
 修复提交：`6f5bcc5 fix(ebr): tag retired objects with global epoch`

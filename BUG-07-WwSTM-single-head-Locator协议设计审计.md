@@ -1,5 +1,8 @@
 # BUG-07：WwSTM single-head Locator 协议与实现
 
+> 历史修复记录：本文的实现片段与验收次数对应所列提交。当前协议见
+> [设计说明](OSTM_WW.md)，当前启用、跳过与禁用范围见[测试说明](docs/testing.md)。
+
 状态：Commit B 已实现（TxDescriptor 生命周期与对齐另见 BUG-08）
 
 审计基线：`68ed73f docs: record single-head Commit A result`

@@ -1,24 +1,40 @@
 # CaSTM 简历项目描述
 
-以下内容只使用当前仓库已经实现和验证过的事实。性能数字对应本地记录的
-benchmark/allocator-ablation 结果，不应脱离 workload、机器和有效性规则单独引用。
+项目名称：**CaSTM：C++17 软件事务内存与并发控制原型**。
+以下内容对应已有实现；[测试范围](../testing.md)与
+[性能报告及原始数据](../performance/README.md)可在仓库中核验。
+性能数字必须保留 workload、机器和有效性条件。
 
 ## 中文
 
-- 实现 C++17 软件事务内存 runtime CaSTM，提供 OccSTM（optimistic validation/retry）和 WwSTM（Wound-Wait）两条并发控制路线，基于 MVCC 版本节点完成事务读写与冲突处理。
-- 为 WwSTM 设计并实现 single-head Locator，将共享状态统一为 tagged VersionNode | WriteRecord，以 ACTIVE -> COMMITTED descriptor CAS 作为多变量事务唯一 linearization point，并通过 helping 完成物理展平。
-- 实现 EBR 延迟回收和 CentralHeap/ThreadHeap/SizeClassPool 分层分配器；修复 premature reclaim、published WriteRecord、over-aligned TxDescriptor 等生命周期问题，并补充对应的压力与回归测试。
-- 在统一 Shared KV/Array workload 上完成 432-run STM 矩阵和 allocator ablation；WwSTM 在矩阵中 108/108 完成，OccSTM 为 97/108，失败点被明确标记为 retry-guard progress failure 而非 checksum correctness failure。
+- 实现 C++17 软件事务内存原型，提供 OccSTM 乐观验证与 WwSTM 主动冲突裁决两条路线，支持版本化共享变量的事务读写。
+- 设计 WwSTM single-head Locator，统一版本节点与写记录入口；以 descriptor 状态 CAS 确定多变量事务的逻辑提交，再由 owner/helper 完成物理清理。
+- 实现 EBR 延迟回收和分层线程分配器，定位并修复提前回收、已发布写记录生命周期及 descriptor 对齐问题，补充确定性交错与并发回归测试。
+- 建立四后端统一事务基准，完成 432 次矩阵运行和 60 次分配器对照；分别记录吞吐、尾延迟、重试与 checksum，保留无效运行并分析收益与退化边界。
+
+若岗位更重视性能，可用以下一句替换第四条中的部分内容：
+
+> 在 WSL2 / i5-14600KF 的 8 线程、50R/50W、65,536 keys 场景中，对 WwSTM
+> 关键对象切换 TierAlloc 后，5 次独立运行的平均吞吐较系统分配器提高约 30.3%；
+> 同时记录高冲突配置下的性能退化。
 
 ## English
 
-- Implemented CaSTM, a C++17 software transactional memory runtime with two concurrency-control paths: OccSTM optimistic validation/retry and WwSTM Wound-Wait conflict management over MVCC versioned variables.
-- Designed and implemented a single-head WwSTM Locator using a tagged VersionNode | WriteRecord state, with one descriptor ACTIVE -> COMMITTED CAS as the transaction linearization point for multi-variable commits and helping-based physical cleanup.
-- Implemented EBR deferred reclamation and a CentralHeap/ThreadHeap/SizeClassPool allocator hierarchy; diagnosed and fixed premature reclaim, published WriteRecord lifetime, and over-aligned TxDescriptor allocation/lifetime bugs with stress and regression tests.
-- Built a reproducible Shared KV/Array benchmark and allocator ablation. In the recorded 432-run matrix, WwSTM completed 108/108 points while OccSTM completed 97/108; retry-guard failures are reported separately from checksum correctness.
+- Implemented CaSTM, a C++17 software transactional memory prototype with OccSTM optimistic validation/retry and WwSTM active conflict management over versioned shared variables.
+- Designed a single-head WwSTM Locator with a descriptor status CAS as the logical commit point for multi-variable transactions, followed by owner/helper physical cleanup.
+- Implemented EBR deferred reclamation and a tiered thread allocator; diagnosed premature reclamation, published-record lifetime and descriptor alignment bugs, with deterministic interleaving and concurrent regression tests.
+- Built a common four-backend transaction benchmark with 432 matrix runs and 60 allocator-ablation runs, recording throughput, tail latency, retries and checksums while preserving invalid runs and performance regressions.
+
+## 岗位侧重点
+
+- C++ 后端：共享状态的多对象原子更新、事务失败处理与并发问题定位。
+- 基础架构：对象生命周期、EBR、分配路径及实验方法。
+- 存储：内存事务的提交点、版本管理与冲突控制；当前范围不含持久化、恢复或存储服务。
 
 ## 面试时的限定说明
 
-- benchmark 是单机 WSL2、Intel i5-14600KF、20 logical CPUs、GCC 11.4、Release -O3 环境下的结果。
-- 不把 mutex baseline 或 STM 宣称为普遍赢家；高冲突下 OccSTM 可能耗尽 retry guard，WwSTM 也会付出 abort 和 tail-latency 成本。
-- TSan/LSan runtime validation 受当前 WSL/ptrace 环境限制，不能写成已完整通过。
+- benchmark 是历史的单机 WSL2、Intel i5-14600KF、20 logical CPUs、GCC 11.4、Release -O3 结果；短时运行检查不作为新的性能结论。
+- WwSTM 108/108、OccSTM 97/108 是主矩阵中的有效运行次数。无效行的原始错误只有 exit code 1，重试耗尽归因及其诊断限制见报告。
+- 锁基线通常更快；现有数据不能证明普遍加速、线性扩展或无饥饿。
+- 当前包含互斥锁，验证只覆盖明确列出的测试；mode=0/ASan+UBSan 各 36 个通过，VERIFY 29 个通过、7 个跳过，另有 1 个禁用用例。
+- TSan 本轮未验证，ASan 关闭泄漏检测；TierAlloc 仍有线程退出保留 chunk 的策略，不能写成完整无泄漏或生产就绪。

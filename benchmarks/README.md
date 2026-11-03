@@ -5,7 +5,11 @@ intentionally separate from the correctness tests: the benchmark uses one
 common Shared KV/Array workload and adapts only the transaction boundary to
 each backend.
 
-## Audit result
+The recorded results, original CSV snapshots, experiment commits and hashes are
+available in the [performance report](../docs/performance/README.md).
+The current correctness-test scope is documented [separately](../docs/testing.md).
+
+## Recorded environment
 
 Before this benchmark was added, the repository had no reusable benchmark
 harness, no Google Benchmark integration, and no standalone performance
@@ -14,8 +18,9 @@ test.  OccSTM and WwSTM expose different transaction types, so the harness
 uses a small backend adapter rather than pretending that their high-level APIs
 are identical.
 
-The current host has 20 logical CPUs (Intel Core i5-14600KF), GCC 11.4, CMake
-3.22, and WSL2.  The runner records the actual host information in
+The archived experiments used 20 logical CPUs (Intel Core i5-14600KF), GCC 11.4,
+and WSL2. The documented build commands have been checked with CMake 3.22.
+The runner records the actual host information in
 `metadata.txt` for every result directory instead of treating these values as
 portable constants.
 
@@ -52,6 +57,11 @@ The four backends are:
 The `shared_mutex` definition is deliberately documented: a mixed transaction
 uses an exclusive lock, so it is a fair baseline for the same atomic unit but
 does not claim that individual reads inside a mixed transaction are parallel.
+
+The main historical matrix keeps native allocator choices: OccSTM VersionNode
+uses TierAlloc, while WwSTM VersionNode/WriteRecord use the system allocator.
+It compares complete implementations, not an isolated conflict-algorithm variable.
+Use allocator ablation below for the separate allocation-path comparison.
 
 ## Metrics
 
@@ -94,7 +104,14 @@ The runner starts each backend/configuration in its own process, writes
 `raw.csv`, `summary.csv`, and `metadata.txt` under
 `bench/results/<UTC timestamp>/`, and continues after a failed point so that
 the failure remains visible as `valid=0`.  Invalid rows never contribute to
-`summary.csv` means or standard deviations.
+`summary.csv` means or standard deviations. Historical invalid rows only record
+`exit code 1`; the limits of retry-exhaustion attribution are discussed in the
+[report](../docs/performance/README.md#无效运行). Checksum equality validates the
+workload's final-sum invariant, not every transactional isolation property.
+
+The two historical raw/summary CSV pairs are intentionally archived under
+`docs/performance/data/`. New results and bulky local analysis artifacts remain
+under the ignored `bench/results/` directory.
 
 Representative smoke matrix (1/4/8 threads, 90R low/high and 50R high):
 
@@ -125,3 +142,32 @@ python3 scripts/summarize_stm_benchmark.py \
 Do not run the benchmark with sanitizers or VERIFY mode, and do not interpret
 one run as a performance conclusion.  Check validity, retry rate, variance,
 single-thread overhead, and scaling trends first.
+
+## Allocator ablation
+
+Build two separate Release binaries from the same source revision:
+
+~~~bash
+cmake -S . -B /tmp/castm-allocator-system \
+  -DCMAKE_BUILD_TYPE=Release -DSTM_ALLOCATOR_MODE=system
+cmake --build /tmp/castm-allocator-system --target stm_benchmark -j2
+cmake -S . -B /tmp/castm-allocator-tier \
+  -DCMAKE_BUILD_TYPE=Release -DSTM_ALLOCATOR_MODE=tier
+cmake --build /tmp/castm-allocator-tier --target stm_benchmark -j2
+python3 scripts/run_allocator_ablation.py \
+  --system-binary /tmp/castm-allocator-system/benchmarks/stm_benchmark \
+  --tier-binary /tmp/castm-allocator-tier/benchmarks/stm_benchmark \
+  --warmup-ms 1000 --measure-ms 5000 --repetitions 5
+~~~
+
+The runner fixes six configurations and records five independent processes for
+each allocator/configuration pair: 60 runs in total. The switch covers key STM
+allocation paths, not TxDescriptor, EBR metadata or all standard-library buffers.
+Only compare speedup where both sides have all five valid runs.
+
+The main matrix was recorded at `4c47011`, and the allocator experiment at
+`6998448`; exact hashes and parameters are in
+[provenance.json](../docs/performance/data/provenance.json).
+Runs on the current revision are new measurements, not replacements for those
+snapshots. For an offline check of archived hashes, validity and summary
+statistics, use the [report's verification command](../docs/performance/README.md#复核与重新运行).

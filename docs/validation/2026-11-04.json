@@ -1,0 +1,565 @@
+{
+  "date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "source_commit": "da9634b47bd1e37e0700725e4aab845393d5213b",
+  "scope": "Fresh local builds and one CTest run per mode; documentation/data-only changes; no remote CI status claim.",
+  "host": {
+    "compiler": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+    "cmake": "cmake version 3.22.1",
+    "python": "Python 3.10.12",
+    "kernel": "Linux 6.18.40.1-microsoft-standard-WSL2"
+  },
+  "test_definition_sha256": "064834626dfaa49ecee9632bfb89224ffd11f3d5c3948bb14e15800a4f0acde1",
+  "builds": {
+    "mode0": {
+      "build_type": "Release",
+      "cxx_flags": "-DSTM_WW_VERIFY_LOGIC_MODE=0",
+      "environment": {},
+      "ctest_arguments": [
+        "--output-on-failure",
+        "--timeout",
+        "60"
+      ],
+      "registered": 37,
+      "counts": {
+        "passed": 36,
+        "skipped": 0,
+        "disabled": 1,
+        "failed": 0
+      },
+      "tests": [
+        {
+          "name": "EBRManagerTest.SingleThreadBasicFlow",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.MultiThreadStress_ThreadHeap_Integration",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.CustomDeleterWithStandardHeap",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod",
+          "status": "passed"
+        },
+        {
+          "name": "WwSTMTreeTest.ConcurrentPathIncrement",
+          "status": "passed"
+        },
+        {
+          "name": "WwSTMTreeTest.HighContentionProgressAndConsistency",
+          "status": "disabled"
+        },
+        {
+          "name": "TxContextTest.TwoThreadsConcurrentIncrement",
+          "status": "passed"
+        },
+        {
+          "name": "TxContextTest.RepeatReadVersionChangeAborts",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.Construction",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.StableNodeReadSnapshot",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ReadYourOwnWrites",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.IsolationSnapshotRead",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.WriteWriteConflict",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ReentrantWriteReusesOneLocatorAndDraft",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortAndRollback",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortedRecordReadSnapshotUsesOldNode",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ActiveRecordReadSnapshotUsesOldNode",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortMultiVariableKeepsOldLogicalView",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableAtomicityStress",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.HeadIdentityChangeRetriesSnapshot",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.HelpingFlattensAbortedAndCommittedLocators",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.StealAbortedLockViaNodeGeneration",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiresAfterHelper",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiredExactlyOnce",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr",
+          "status": "passed"
+        },
+        {
+          "name": "TxLinkedListTest.SingleThreadAppend",
+          "status": "passed"
+        },
+        {
+          "name": "TxLinkedListTest.TwoThreadsConcurrentAppend",
+          "status": "passed"
+        }
+      ]
+    },
+    "verify": {
+      "build_type": "Debug",
+      "cxx_flags": "-DSTM_WW_VERIFY_LOGIC_MODE=1",
+      "environment": {},
+      "ctest_arguments": [
+        "--output-on-failure",
+        "--timeout",
+        "60"
+      ],
+      "registered": 37,
+      "counts": {
+        "passed": 29,
+        "skipped": 7,
+        "disabled": 1,
+        "failed": 0
+      },
+      "tests": [
+        {
+          "name": "EBRManagerTest.SingleThreadBasicFlow",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.MultiThreadStress_ThreadHeap_Integration",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.CustomDeleterWithStandardHeap",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod",
+          "status": "passed"
+        },
+        {
+          "name": "WwSTMTreeTest.ConcurrentPathIncrement",
+          "status": "passed"
+        },
+        {
+          "name": "WwSTMTreeTest.HighContentionProgressAndConsistency",
+          "status": "disabled"
+        },
+        {
+          "name": "TxContextTest.TwoThreadsConcurrentIncrement",
+          "status": "passed"
+        },
+        {
+          "name": "TxContextTest.RepeatReadVersionChangeAborts",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.Construction",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.StableNodeReadSnapshot",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ReadYourOwnWrites",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.IsolationSnapshotRead",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.WriteWriteConflict",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ReentrantWriteReusesOneLocatorAndDraft",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortAndRollback",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortedRecordReadSnapshotUsesOldNode",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ActiveRecordReadSnapshotUsesOldNode",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortMultiVariableKeepsOldLogicalView",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableAtomicityStress",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.HeadIdentityChangeRetriesSnapshot",
+          "status": "skipped"
+        },
+        {
+          "name": "TMVarTest.HelpingFlattensAbortedAndCommittedLocators",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.StealAbortedLockViaNodeGeneration",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiresAfterHelper",
+          "status": "skipped"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiredExactlyOnce",
+          "status": "skipped"
+        },
+        {
+          "name": "TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly",
+          "status": "skipped"
+        },
+        {
+          "name": "TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord",
+          "status": "skipped"
+        },
+        {
+          "name": "TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup",
+          "status": "skipped"
+        },
+        {
+          "name": "TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr",
+          "status": "skipped"
+        },
+        {
+          "name": "TxLinkedListTest.SingleThreadAppend",
+          "status": "passed"
+        },
+        {
+          "name": "TxLinkedListTest.TwoThreadsConcurrentAppend",
+          "status": "passed"
+        }
+      ]
+    },
+    "asan-ubsan": {
+      "build_type": "Debug",
+      "cxx_flags": "-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -DSTM_WW_VERIFY_LOGIC_MODE=0",
+      "linker_flags": "-fsanitize=address,undefined",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      },
+      "ctest_arguments": [
+        "--output-on-failure",
+        "--timeout",
+        "60"
+      ],
+      "registered": 37,
+      "counts": {
+        "passed": 36,
+        "skipped": 0,
+        "disabled": 1,
+        "failed": 0
+      },
+      "tests": [
+        {
+          "name": "EBRManagerTest.SingleThreadBasicFlow",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.MultiThreadStress_ThreadHeap_Integration",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.CustomDeleterWithStandardHeap",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch",
+          "status": "passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod",
+          "status": "passed"
+        },
+        {
+          "name": "WwSTMTreeTest.ConcurrentPathIncrement",
+          "status": "passed"
+        },
+        {
+          "name": "WwSTMTreeTest.HighContentionProgressAndConsistency",
+          "status": "disabled"
+        },
+        {
+          "name": "TxContextTest.TwoThreadsConcurrentIncrement",
+          "status": "passed"
+        },
+        {
+          "name": "TxContextTest.RepeatReadVersionChangeAborts",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.Construction",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.StableNodeReadSnapshot",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ReadYourOwnWrites",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.IsolationSnapshotRead",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.WriteWriteConflict",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ReentrantWriteReusesOneLocatorAndDraft",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortAndRollback",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortedRecordReadSnapshotUsesOldNode",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.ActiveRecordReadSnapshotUsesOldNode",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.AbortMultiVariableKeepsOldLogicalView",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableAtomicityStress",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.HeadIdentityChangeRetriesSnapshot",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.HelpingFlattensAbortedAndCommittedLocators",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.StealAbortedLockViaNodeGeneration",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiresAfterHelper",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiredExactlyOnce",
+          "status": "passed"
+        },
+        {
+          "name": "TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup",
+          "status": "passed"
+        },
+        {
+          "name": "TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr",
+          "status": "passed"
+        },
+        {
+          "name": "TxLinkedListTest.SingleThreadAppend",
+          "status": "passed"
+        },
+        {
+          "name": "TxLinkedListTest.TwoThreadsConcurrentAppend",
+          "status": "passed"
+        }
+      ]
+    }
+  },
+  "benchmark_smoke": {
+    "purpose": "Execution/checksum check only; no performance claim.",
+    "parameters": {
+      "backends": [
+        "mutex",
+        "shared_mutex",
+        "occ",
+        "ww"
+      ],
+      "threads": [
+        1,
+        4
+      ],
+      "workloads": [
+        [
+          90,
+          "low"
+        ],
+        [
+          90,
+          "high"
+        ],
+        [
+          50,
+          "high"
+        ]
+      ],
+      "warmup_ms": 100,
+      "measure_ms": 300,
+      "repetitions": 1
+    },
+    "runs": 24,
+    "valid_runs": 24,
+    "checksum_mismatches": 0
+  },
+  "readme_single_point": {
+    "backend": "ww",
+    "threads": 4,
+    "read_ratio": 50,
+    "contention": "low",
+    "warmup_ms": 100,
+    "measure_ms": 300,
+    "valid": true,
+    "checksum_match": true
+  }
+}

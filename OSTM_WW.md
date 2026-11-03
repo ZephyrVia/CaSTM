@@ -1,148 +1,98 @@
-# OSTM_WW 设计规范文档
-**Object-based Software Transactional Memory with Wound-Wait**
+# WwSTM 当前设计说明
 
-## 1. 概述与核心目标
+本文保留历史文件名 OSTM_WW，内容于 2026-11-04 按源码基线 `da9634b` 更新。
+旧草案中的 LSA 快照扩展、提交后补写时间戳和全链路无锁描述已被当前实现取代。
+修复过程见 [BUG 索引](BUG-00-索引.md)，实验范围见[测试说明](docs/testing.md)。
 
-本项目实现了一个基于 C++ 的高性能软件事务内存 (STM) 系统，命名为 **OSTM_WW**。该系统专为满足苛刻的并发控制要求而设计，核心特征如下：
+## 数据结构
 
-*   **无锁设计 (Non-blocking / Obstruction-Free)**：摒弃互斥锁 (`std::mutex`)，全链路采用原子操作 (CAS) 和间接层 (Indirection) 实现。
-*   **主动抢占 (Active Abort)**：采用 **Wound-Wait** 策略，允许高优先级事务主动中止低优先级事务，彻底消除死锁，保证进展。
-*   **指针式 Undo Log**：利用数据结构的 **异地更新 (Out-of-Place Update)** 特性，旧版本指针天然构成 Undo Log，实现零拷贝回滚。
-*   **MVCC 与时间戳验证**：基于 **LSA (Lazy Snapshot Algorithm)**，读操作利用多版本特性读取一致性快照，不阻塞写操作。
-*   **内存安全**：结合 **EBR (Epoch-Based Reclamation)** 和 **Thread-Local Lock-Free Allocator**，解决无锁环境下的内存回收与性能瓶颈问题。
+| 结构 | 职责 | 实现 |
+| --- | --- | --- |
+| TxContext | 持有读写集，开始、验证、提交或中止事务 | [TxContext.hpp](include/WwSTM/TxContext.hpp) |
+| TxDescriptor | 保存 start_ts、ACTIVE/ABORTED/COMMITTED 状态与 prepare gate | [TxDescriptor.hpp](include/WwSTM/TxDescriptor.hpp) |
+| TMVar | 用一个 tagged head 发布 Node 或 Record | [TMVar.hpp](include/WwSTM/TMVar.hpp) |
+| WriteRecord | 保存 owner、old_node、new_node 和 prepared 状态 | [WriteRecord.hpp](include/WwSTM/WriteRecord.hpp) |
+| VersionNode | 保存 payload 与 write_ts | [VersionNode.hpp](include/WwSTM/VersionNode.hpp) |
 
----
+WwSTM 的 VersionNode 没有 OccSTM 的 prev 版本链。它通过 Record 同时保留旧节点和
+草稿节点，并结合读集验证处理并发修改。两个后端共享“版本化对象”思路，但不能
+把它们描述成相同的历史快照实现。
 
-## 2. 核心数据结构设计
+## 读取与写入
 
-系统的核心思想是 **"Indirection" (间接层)**。共享变量不再直接指向数据，而是可能指向一个“定位器 (Locator)”，该定位器充当了动态的锁和日志容器。
+~~~text
+head → VersionNode | WriteRecord
+~~~
 
-### 2.1 事务描述符 (Transaction Descriptor)
-事务的唯一标识，也是并发控制的核心“开关”。
+对其他事务，Record 的逻辑视图由 owner 状态决定：
 
-*   **`uint64_t start_ts`**：事务开始的时间戳。用于 **MVCC 读可见性判断** 和 **Wound-Wait 优先级裁决**（时间戳越小，优先级越高，越老越强）。
-*   **`std::atomic<TxStatus> status`**：原子状态机。
-    *   `ACTIVE`: 事务正在运行。
-    *   `COMMITTED`: 事务已提交，修改永久生效。
-    *   `ABORTED`: 事务已回滚，修改全部作废。
-    *   **关键点**：此状态允许被**其他线程**修改（实现 Active Abort）。
+| owner 状态 | 可见节点 |
+| --- | --- |
+| ACTIVE | old_node |
+| ABORTED | old_node |
+| COMMITTED | new_node |
 
-### 2.2 定位器 (Locator) —— 动态锁与日志
-每次写操作都会分配一个新的 Locator（利用 Lock-free Allocator 低成本分配）。
+owner 可以读取自己的 new_node，实现 read-your-own-writes。
+`readSnapshot()` 从同一 VersionNode 复制 value 和 version，并复核 head identity；
+TxContext 记录 node identity/version，用于后续验证。
 
-*   **`TransactionDescriptor* owner`**：指向发起修改的事务。
-*   **`VersionNode* old_version`**：**【Undo Log】**。指向修改前的旧数据节点。
-    *   若事务 Abort，此指针即为回滚后的数据。
-    *   并发读事务利用此指针实现无锁快照读。
-*   **`VersionNode* new_version`**：**【Redo Log】**。指向新分配的、包含新值的数据节点。
-    *   仅当 owner 状态变为 COMMITTED 时，此数据才对外可见。
+写操作将旧 Node 与新草稿关联到 Record，通过 head CAS 发布。事务对同一变量的
+重复写复用自己的 Record/草稿；prepare 开始后冻结草稿。owner 写入与 prepare
+使用同一个 descriptor `write_gate` 互斥锁。
 
-### 2.3 共享变量 (TMVar) 与 标记指针 (Tagged Pointer)
-*   **`std::atomic<uintptr_t> head`**：全局共享的指针。
-*   **Tagged Pointer 机制**：利用指针末位 bit 区分当前指向的是 **稳态数据 (VersionNode)** 还是 **暂态结构 (Locator)**。
-    *   `Bit 0 == 0`: 指向 `VersionNode`（无并发写，直接读）。
-    *   `Bit 0 == 1`: 指向 `Locator`（有并发写，需解引用判断）。
+读者可能观察到一个事务生效前后的不同变量，随后验证失败并重试。因此应用必须
+以事务成功提交为读取结果的接受条件；当前没有对所有执行历史给出 serializability
+或 opacity 的形式化证明。
 
----
+## 冲突裁决与进展边界
 
-## 3. 内存管理模型
+当前实现按 start_ts 判定年龄，相同时间戳时用 descriptor 地址打破平局。
+较老事务尝试将冲突方从 ACTIVE 改为 ABORTED；较年轻事务中止自身。
+终态 Record 可由其他线程帮助展平。
 
-本设计依赖两大支柱来解决 Out-of-Place Update 带来的内存挑战：
+写入重试包含 yield、周期性短暂 sleep 和次数上限，外层逻辑事务仍可能重试。
+这种实现使用了 Wound-Wait 风格的主动中止，但不据此承诺无饥饿、wait-free
+或 lock-free。新事务会重新获取时间戳；108/108 次 benchmark 完成仅是有限实验结果。
 
-### 3.1 物理内存分配 (Allocation)
-*   **策略**：**Thread-Local Lock-Free Allocator**。
-*   **必要性**：由于每次写操作都要 new 一个 `Locator` 和 `VersionNode`，传统的 `malloc` 会成为瓶颈。TLS 分配器将分配成本降至指针移动级别。
+## 提交与中止
 
-### 3.2 内存安全回收 (Reclamation)
-*   **策略**：**EBR (Epoch-Based Reclamation)**。
-*   **逻辑分离**：
-    *   **事务时间戳 (Global Clock)**：负责逻辑正确性（MVCC 版本可见性），每次提交推进。
-    *   **EBR 纪元 (Global Epoch)**：负责物理内存安全，批量延迟推进。
-*   **流程**：旧版本（Undo Log）在不再被引用时，不是立即 `delete`，而是 `retire()` 给 EBR，等待所有读线程离开旧纪元后安全释放。
+写事务的顺序为：
 
----
+1. 获取 write_gate，检查 ACTIVE 并标记 prepare_started。
+2. 验证读集和写集 ownership。
+3. 获取 commit_ts，prepare 所有已发布 Record；最终 payload 与时间戳必须在此阶段就绪。
+4. CAS：ACTIVE → COMMITTED，作为事务逻辑提交点。
+5. 释放 write_gate，帮助各 Record 展平，清理事务资源。
 
-## 4. 算法流程详解
+COMMITTED 是不可逆终态。helper 先完成展平，不改变 owner 的提交结果。
+提交 CAS 之前失败的事务进入 ABORTED，逻辑上保留旧值，再完成清理。
 
-### 4.1 读操作 (Load) —— MVCC + LSA
-**原则**：读操作永远不修改共享内存，永远不阻塞。
+Record → Node 的成功 CAS 决定该代 Record 及废弃节点的退休责任，避免
+owner/helper 重复退休。清理遍历写集，所以不把整个事务回滚描述为 O(1)。
+old_node/new_node 是内存中的版本引用，没有磁盘 Undo/Redo 日志或故障恢复能力。
 
-1.  **读取 Head**：原子加载 `TMVar.head`。
-2.  **类型判断**：
-    *   **是 Node**：直接获取该 Node。
-    *   **是 Locator**：读取 `Locator.owner.status`。
-        *   `COMMITTED` -> 读 `new_version`。
-        *   `ABORTED` -> 读 `old_version`。
-        *   `ACTIVE` -> **发生冲突**。为了不等待，根据 MVCC 规则，直接读取 `old_version` (快照读)。
-3.  **时间戳验证 (LSA)**：
-    *   获取所读 Node 的 `write_ts`。
-    *   **校验**：若 `node.write_ts > tx.start_ts`，说明读到了“未来”的数据，违反一致性，当前事务自杀 (Abort)。
-    *   **更新快照区间**：根据 LSA 算法更新当前事务的有效时间区间。
+## 生命周期与分配
 
-### 4.2 写操作 (Store) —— 遭遇式写 + Active Abort
-**原则**：异地更新 (Out-of-Place)，Wound-Wait 策略解决冲突。
+- mode=0 中，reader、owner 和 helper 对共享对象的访问受到 EBR critical section 保护。
+- 已发布 Record 从 head 移除后通过 EBR 退休；仍可能有 reader 持有其指针。
+- descriptor 等对应 Record 清理完成后再退休，且在退出 EBR 临界区之前登记退休。
+- `EBRManager::retire()` 读取全局 epoch，为垃圾队列选择桶；不使用可能落后的线程 epoch。
+- Record/VersionNode 默认使用系统堆，benchmark 的 allocator 选项可将其切换为 TierAlloc。
+- TxDescriptor 使用满足 cache-line 对齐的系统分配，GarbageNode 元数据也使用系统堆；
+  它们不参与 allocator ablation 切换。
+- ThreadHeap 在线程退出时保留部分 chunk，避免活对象被复用覆盖；长期资源回收仍有边界。
 
-1.  **准备阶段**：
-    *   分配 `NewNode` (写入新值)。
-    *   分配 `Locator`，设置 `NewNode` 指针，`Owner` 指向自己。
-2.  **冲突检测循环 (CAS Loop)**：
-    *   读取 `TMVar.head`。
-    *   **若当前是 Locator (遭遇冲突)**：
-        *   获取对方 Owner。
-        *   **Wound-Wait 裁决**：
-            *   若 `Me.start_ts < Enemy.start_ts` (我更老，优先级高)：**Active Abort**。原子地将 `Enemy.status` 设为 `ABORTED`。我不等待，直接尝试覆盖它的 Locator。
-            *   若 `Me.start_ts > Enemy.start_ts` (我年轻)：自杀 (Self-Abort)，抛出重试异常。
-        *   **设置 Undo Log**：解析出当前的逻辑有效值，赋值给 `Locator.old_version`。
-    *   **若当前是 Node (无冲突)**：
-        *   直接将该 Node 赋值给 `Locator.old_version`。
-3.  **原子上位**：
-    *   执行 `CAS(expected=old_ptr, desired=locator_ptr)`。
-    *   成功则持有该变量，失败则重试循环。
+VERIFY 为白盒逻辑测试保留部分已发布对象，并使用额外的 TMVar 互斥保护。
+该模式不验证 WwSTM 的真实物理回收，不能用于性能比较或宣称无泄漏。
 
-### 4.3 提交 (Commit)
-**原则**：单点原子生效。
+## 与证据对应
 
-1.  **获取提交时间戳**：`commit_ts = GlobalClock.fetch_add(1)`。
-2.  **状态翻转**：`CAS(status, ACTIVE, COMMITTED)`。
-    *   成功：所有被我挂上 Locator 的变量，瞬间对外展示为 `NewNode`。
-    *   失败（被别人 Active Abort）：抛出异常进行清理。
-3.  **后处理 (Post-Commit Cleanup)**：
-    *   遍历写集，尝试将 `TMVar.head` 从 `Locator` 替换回 `NewNode` (去除间接层，加速后续读取)。
-    *   将替换下来的 `Locator` 和 `OldNode` 提交给 **EBR** 回收。
+| 问题 | 回归入口或记录 |
+| --- | --- |
+| value/version 偏斜 | [BUG-06](BUG-06-WwSTM版本值偏斜丢失更新.md)、TMVarTest.HeadIdentityChangeRetriesSnapshot |
+| 多变量逻辑提交与 helper 交错 | [BUG-07](BUG-07-WwSTM-single-head-Locator协议设计审计.md)、TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus / MultiVariableAtomicityStress |
+| 已发布 Record 生命周期 | [BUG-04](BUG-04-WwSTM-WriteRecord生命周期.md)、TMVarTest.PublishedWriteRecordRetiresAfterHelper |
+| descriptor 对齐与延迟回收 | [BUG-08](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md)、TxDescriptorTest |
+| EBR 退休 epoch | [BUG-02](BUG-02-EBR-retire纪元标记提前回收.md)、EBRManagerTest |
 
-### 4.4 回滚 (Abort)
-**原则**：逻辑回滚，零拷贝。
-
-1.  **状态翻转**：`status = ABORTED`。
-    *   此时，所有读者看到我的 Locator，都会自动去读 `old_version`。
-2.  **后处理**：
-    *   (可选) 尝试将 `TMVar.head` 恢复指向 `OldNode`。
-    *   将废弃的 `NewNode` 和 `Locator` 提交给 **EBR** 回收。
-
----
-
-## 5. 关键机制深度解析
-
-### 5.1 为什么说这是 Undo Log？
-传统数据库的 Undo Log 记录的是“操作的反向逻辑”或“旧值拷贝”。本设计的 `Locator.old_version` 指针保留了**旧对象的完整物理引用**。
-*   当事务运行时，这个指针就是 Undo Log，保证了旧数据的留存。
-*   当事务回滚时，系统通过指针切换（或读逻辑路由）回到旧对象，实现了**逻辑上的 Undo 回放**。
-*   **优势**：避免了 `memcpy` 的开销，实现了 O(1) 复杂度的回滚。
-
-### 5.2 为什么说这是 Active Abort？
-在传统的基于锁的 STM 中，遇到冲突通常只能等待锁释放。而在本设计中：
-*   我们利用 `TxDesc` 暴露出的原子 `status`。
-*   当高优先级事务发现资源被低优先级事务占有时，它可以**直接修改对方内存中的状态** (`CAS(&enemy.status, ACTIVE, ABORTED)`)。
-*   这就是“主动杀人”，确保了高优先级事务永远不会被阻塞（Non-blocking），满足了 Obstruction-Free 甚至 Wait-Free (针对写操作) 的特性。
-
-### 5.3 为什么必须使用 EBR？
-由于采用了 **New Node** 模式，旧节点被替换下来后，可能仍有并发读事务持有其指针（MVCC 特性）。
-*   不能直接 `delete`，否则读线程会 Segfault。
-*   不能用引用计数，效率太低。
-*   **EBR** 提供了一个“安全删除”的缓冲区，只有确信没有读线程处于旧纪元时，才真正释放内存。这是 C++ 无锁 STM 能够正确运行的基石。
-
----
-
-## 6. 总结
-
-**OSTM_WW** 是一个高度优化的无锁事务引擎。它通过 **Locator 间接层** 实现了无锁的读写并发，通过 **指针式 Undo Log** 降低了回滚开销，通过 **Wound-Wait Active Abort** 解决了死锁与饥饿问题，并利用 **EBR** 和 **Lock-free Allocator** 解决了内存管理的痛点。该设计完全符合高性能、强一致性及非阻塞的学术与工程要求。
+是否启用、模式跳过情况及本轮验证结果以[测试范围](docs/testing.md)为准。

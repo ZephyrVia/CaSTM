@@ -1,5 +1,8 @@
 # BUG-08：WwSTM TxDescriptor 生命周期与 over-aligned 分配
 
+> 历史修复记录：本文的实现片段与验收次数对应所列提交。当前协议见
+> [设计说明](OSTM_WW.md)，当前启用、跳过与禁用范围见[测试说明](docs/testing.md)。
+
 状态：已修复
 
 修复提交：

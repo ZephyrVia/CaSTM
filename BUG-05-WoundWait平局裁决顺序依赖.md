@@ -1,5 +1,8 @@
 # BUG-05：Wound-Wait 平局裁决的堆地址顺序依赖
 
+> 历史修复记录：本文的实现片段与验收次数对应所列提交。当前协议见
+> [设计说明](OSTM_WW.md)，当前启用、跳过与禁用范围见[测试说明](docs/testing.md)。
+
 状态：main 谱系已修复；`bug/WwSTM-memory-issue` 分支暂缓纳入
 
 main 谱系修复提交：`8b3cdf5 fix: Wound-Wait 平局裁决改用创建序号，消除堆地址彩票`

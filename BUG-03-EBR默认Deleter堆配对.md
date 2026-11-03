@@ -1,5 +1,8 @@
 # BUG-03：EBR 默认 deleter 与对象分配堆不配对
 
+> 历史修复记录：本文的实现片段与验收次数对应所列提交。当前协议见
+> [设计说明](OSTM_WW.md)，当前启用、跳过与禁用范围见[测试说明](docs/testing.md)。
+
 状态：已修复
 
 修复提交：`a345e04 fix: EBR retire 默认 deleter 统一为 delete 分派约定，恢复 EBR 测试`

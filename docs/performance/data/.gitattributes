@@ -1,0 +1,2 @@
+# Preserve archived CSV bytes and their SHA-256 across platforms.
+*.csv -text whitespace=cr-at-eol

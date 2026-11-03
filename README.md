@@ -2,258 +2,166 @@
 
 # CaSTM
 
-**C++17 Software Transactional Memory Runtime**
+**C++17 软件事务内存与并发控制原型**
 
-CaSTM 是一个 C++17 软件事务内存（STM）runtime 原型，用 MVCC、事务重试和
-基于 epoch 的安全回收，把并发读写组织成可组合的事务。项目实现了两条并发控制
-路线：OccSTM 使用 optimistic validation/retry，WwSTM 使用 Wound-Wait、主动中止
-和 single-head Locator。除了 STM 本身，还包含 EBR 和自研 TierAlloc 分配器，并用
-多变量原子性测试、压力测试、sanitizer 和可复现 benchmark 验证设计边界。
+CaSTM 将进程内共享变量的读写组织成事务，实现了 OccSTM 和 WwSTM 两条并发控制
+路线，并包含 EBR 延迟回收与 TierAlloc 分层分配器。项目重点是多变量提交、并发
+对象生命周期，以及不同冲突与分配策略的实验比较。
 
-## Project overview
+## 阅读入口
 
-- C++17 STM runtime，提供 atomically、Transaction 和 TxContext 风格 API。
-- OccSTM：读集/写集验证，冲突时重试。
-- WwSTM：Wound-Wait 冲突裁决，使用 head -> VersionNode | WriteRecord Locator。
-- MVCC 版本链：读者按事务状态选择稳定旧版本或已提交新版本。
-- EBR：保护 reader、helper、Record 和 TxDescriptor 的生命周期。
-- TierAlloc：CentralHeap -> ThreadHeap -> SizeClassPool 的分层小对象分配器。
-- correctness 和 performance 均有独立的测试、结果记录与分析脚本。
+| 内容 | 文档 |
+| --- | --- |
+| WwSTM 当前协议与实现位置 | [设计说明](OSTM_WW.md) |
+| 构建选项与代码阅读顺序 | [构建指南](OSTM_WW%20系统构建指南.md) |
+| 启用、跳过、禁用及未纳入构建的测试 | [测试范围与验证记录](docs/testing.md) |
+| 性能结论、限制及可核验 CSV | [性能报告](docs/performance/README.md) |
+| benchmark 构建、运行和汇总 | [实验使用说明](benchmarks/README.md) |
+| 并发问题的取证与修复过程 | [BUG 索引](BUG-00-索引.md) |
+| 项目展示 | [简历描述](docs/interview/resume-bullets.md)、[面试讲稿](docs/interview/project-story.md) |
 
-## Architecture
+## 实现概览
 
 ~~~text
 Application
-    ↓
-Transaction / TxContext
-    ↓
-TMVar / VersionNode
-    ↓
-OccSTM or WwSTM
-    ↓
-EBR + TierAlloc
+  ├── Occ::Transaction / STM::atomically
+  │     └── Occ::TMVar → 版本链、读写集、条带锁
+  └── Ww::TxContext
+        └── Ww::TMVar → tagged head、WriteRecord、TxDescriptor
+                    ↓
+          EBR + system allocator / TierAlloc
 ~~~
 
-OccSTM 的提交路径维护 read set、write set 和条带锁；WwSTM 的共享变量只有一个
-tagged head：
+- **OccSTM**：基于时间戳与版本链读取数据，写事务在提交时验证读集并使用条带锁，
+  冲突时重试。`STM::atomically` 当前封装的是 OccSTM。
+- **WwSTM**：使用 Wound-Wait 风格的主动中止与重试，通过 single-head Locator
+  统一共享变量的状态入口。应用使用 `TxContext`，与 OccSTM 的接口尚未统一。
+- **EBR**：保护并发 reader、owner、helper 使用的退休对象，等待 grace period
+  后执行析构与释放。
+- **TierAlloc**：提供 CentralHeap → ThreadHeap → SizeClassPool 分层分配及跨线程
+  释放。默认 OccSTM 的版本节点走 TierAlloc，WwSTM 的 VersionNode/WriteRecord
+  走系统堆；benchmark 可切换这些关键路径。
+
+## WwSTM 的提交与回收
+
+共享变量只有一个 tagged head：
 
 ~~~text
-head -> VersionNode | WriteRecord
-
-WriteRecord
-  ├── owner   -> TxDescriptor
-  ├── old_node
-  └── new_node
+head → VersionNode | WriteRecord
+                         ├── owner → TxDescriptor
+                         ├── old_node
+                         └── new_node
 ~~~
 
-Record 的逻辑视图由 owner 状态决定：
+对其他事务，ACTIVE/ABORTED Record 的逻辑值来自 old_node，COMMITTED Record
+来自 new_node；owner 可以读取自己的草稿。读操作从同一节点取得 value/version，
+复核 head identity，并在事务验证阶段检查读集。
+
+提交顺序是：
 
 ~~~text
-ACTIVE     -> old_node
-ABORTED    -> old_node
-COMMITTED  -> new_node
+validate → prepare all Records → ACTIVE --CAS--> COMMITTED → help / flatten
 ~~~
 
-Record 从 head 展平为 Node 是物理清理；它不能改变事务已经确定的逻辑结果。
+descriptor 的状态 CAS 是逻辑提交点。所有 Record 在这个点之前准备好，之后
+Record → Node 的展平只负责物理清理。成功提交后不能再回滚为 ABORTED。
+多变量读者仍需验证并成功提交，不能把任意事务中的中间读值直接当作一致快照。
 
-## Transaction linearization
+已发布的 Record 和被替换节点通过 EBR 退休；descriptor 在对应 Record 清理完成后
+退休。`retire()` 使用退休时读取的**全局 epoch**标记对象，避免落后的线程 epoch
+使对象过早进入回收窗口。descriptor 使用满足对齐要求的系统分配；
+GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 
-WwSTM 的事务提交顺序是：
+主要修复记录包括 [value/version 偏斜](BUG-06-WwSTM版本值偏斜丢失更新.md)、
+[single-head 提交协议](BUG-07-WwSTM-single-head-Locator协议设计审计.md)、
+[EBR 提前回收](BUG-02-EBR-retire纪元标记提前回收.md)和
+[descriptor 生命周期与对齐](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md)。
 
-~~~text
-validate
-    → prepare all published Records
-    → ACTIVE --CAS--> COMMITTED
-    → help / flatten each Record
-~~~
+## 验证范围
 
-ACTIVE -> COMMITTED descriptor CAS 是事务唯一的 linearization point。多变量事务在
-这个 CAS 之前要么整体进入 ABORTED，要么尚未提交；CAS 成功后，所有变量都按同一
-descriptor 状态解释为 new_node，后续 Record→Node 只是可被 owner 或 helper 完成
-的物理清理。
+2026-11-04 在源码基线 `da9634b` 上复核；本轮收尾只修改文档与归档数据。
 
-## Memory reclamation
+- Release / mode=0：36 个测试通过，1 个高冲突测试保持 disabled。
+- Debug / VERIFY：29 个通过，7 个按设计跳过，1 个 disabled。
+- ASan + UBSan / mode=0：36 个通过，1 个 disabled；命令见[验证记录](docs/testing.md#本轮验证记录)。
+- 默认 CTest 未纳入 OccSTM 独立测试、TierAlloc 独立测试及部分历史 WwSTM 测试。
+- TSan 未在本轮验证；ASan 使用 `detect_leaks=0`，没有完整的 LSan 通过结论。
 
-- 已发布的 WriteRecord 只能 retire，不能复用或直接 delete。
-- Record 保存的 old_node/new_node 和 owner 必须在 EBR critical section 中访问。
-- 事务终态和所有 published Record 清理完成后，TxDescriptor 才进入 EBR。
-- EBR grace period 结束后才执行析构和释放。
-- GarbageNode 元数据使用 system allocator；这部分与 payload 的 allocator 配对
-  保持独立。
+VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
+mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
+长期线程 churn 的内存有界性尚未得到验证。
 
-## Correctness story
+## 性能结果
 
-### 1. Value/version skew -> lost update
+已有实验使用同一 Shared KV/Array workload，每个事务 8 个操作，比较 mutex、
+shared_mutex、OccSTM 和 WwSTM。以下是历史实验结果，本轮没有重跑完整矩阵：
 
-旧结构同时维护 data_ptr_ + record_ptr_，读操作可能从一个对象取得 value、从
-另一个对象取得 version。修复后 WwSTM 使用单一 tagged head，readSnapshot() 从
-同一个 VersionNode 复制 value 和 version，并复核 head identity。这样读集验证
-不会再接受拼接出来的 value/version 对。详见
-[BUG-06](BUG-06-WwSTM版本值偏斜丢失更新.md) 和
-[BUG-07](BUG-07-WwSTM-single-head-Locator协议设计审计.md)。
+| 后端 | 有效运行 / 总运行 |
+| --- | ---: |
+| std::mutex | 108 / 108 |
+| std::shared_mutex | 108 / 108 |
+| OccSTM | 97 / 108 |
+| WwSTM | 108 / 108 |
 
-### 2. EBR premature reclaim -> UAF
+432 次运行的最终 checksum 均匹配；11 次无效运行集中在 OccSTM 高冲突配置，
+原 CSV 保留 `exit code 1`，不纳入性能均值。既有分析将其归为重试耗尽的进展问题，
+原始记录的诊断粒度与结论限制见[性能报告](docs/performance/README.md)。
 
-退休对象如果使用落后的线程 epoch，可能在仍有 reader/helper 时过早进入可回收
-窗口；ThreadHeap 线程退出和 chunk 归还也会放大这个问题。修复包括登记后复核、
-使用已登记 epoch、垃圾账本迁出 ThreadHeap、以及不在并发线程退出时暴力归还 chunk。
-详见 [BUG-01](BUG-01-ThreadHeap线程退出归还活跃Chunk.md)、
-[BUG-02](BUG-02-EBR-retire纪元标记提前回收.md) 和
-[BUG-03](BUG-03-EBR默认Deleter堆配对.md)。
+锁基线在这组短事务实验中通常更快。WwSTM 的结果支持该矩阵中的完成情况比较，
+不代表普遍吞吐领先或无饥饿保证。
 
-### 3. Partial commit -> descriptor linearization
-
-如果先把事务标记为 committed，再逐变量发布结果，owner/helper 交错可能让
-commit() 的返回值与共享变量状态脱节。现在先验证并 prepare 全部 Record，再用
-一次 ACTIVE -> COMMITTED CAS 确定事务结果；COMMITTED 后 cleanup 只能帮助完成，
-不能把事务改回 ABORTED。TxDescriptor 的对齐与延迟回收另见
-[BUG-08](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md)。
-
-## Validation
-
-已完成的验证包括：
-
-~~~text
-mode=0 full test suite
-VERIFY full test suite
-ASan + UBSan
-high-contention stress
-multi-variable atomicity
-descriptor churn and EBR lifetime tests
-~~~
-
-TSan/LSan runtime validation limited by current WSL/ptrace environment。本项目不把
-受环境限制的运行结果写成“已通过”。
-
-## Benchmark
-
-benchmark 使用统一的 Shared KV/Array workload：每个逻辑事务默认执行 8 个确定性
-操作，覆盖 90R/10W、50R/50W、10R/90W，低冲突使用 65,536 keys，高冲突使用
-16 keys。比较对象为 std::mutex、std::shared_mutex、OccSTM 和 WwSTM；吞吐、
-abort rate、p50/p99、attempts、committed 和 checksum 都会写入 CSV。
-
-首次完整矩阵共有 432 个独立 run：
-
-~~~text
-mutex          108/108 valid
-shared_mutex   108/108 valid
-OccSTM          97/108 valid
-WwSTM          108/108 valid
-~~~
-
-OccSTM 的 11 个 invalid 点全部位于高冲突、16T/20T、50R/50W 或 10R/90W
-配置，原因是 1,000,000 次 retry guard 耗尽。它们的 checksum 仍正确，因此是
-progress failure，不是 correctness failure。数据也显示 STM 不一定胜过锁：
-锁 baseline 在本矩阵中通常更快；WwSTM 的主要优势是高冲突下更稳定地完成，而不是
-普遍吞吐领先。
-
-一个代表性的 20T、高冲突、90R/10W 对照是：OccSTM 约 24.5k committed TPS、
-99.9% abort、12.22ms p99；WwSTM 约 1.22M committed TPS、12.5% abort、250us
-p99。这个结果说明 WwSTM 在该压力点 progress 更稳定，但不代表它在所有 workload
-上都优于锁或 OccSTM。
-
-代表图：
-
-![90R/10W low throughput](docs/images/benchmark/throughput-10r90w-low.png)
+另有 60 次分配器对照：57 次有效，0 次 checksum mismatch。有效且两侧样本齐全的
+低冲突代表配置中，TierAlloc 吞吐提升约 15.5%～30.3%；WwSTM 20T、
+10R/90W、高冲突配置则下降约 11.0%。[报告与数据快照](docs/performance/README.md)
+包含参数、版本、失败点及统计边界。
 
 ![50R/50W high throughput](docs/images/benchmark/throughput-50r50w-high.png)
 
-![50R/50W high abort rate](docs/images/benchmark/abort-rate-50r50w-high.png)
+## 快速构建与运行
 
-![10R/90W high p99 latency](docs/images/benchmark/p99-10r90w-high.png)
+已验证环境为 Linux/WSL2、GCC 11.4、CMake 3.22。代码使用 C++17，
+CMake 项目最低版本为 3.14，GoogleTest 已随仓库提供；Python runner 使用 Python 3。
+VERIFY 与 sanitizer 的独立构建命令见[测试说明](docs/testing.md)。
 
-构建、runner、汇总和绘图细节见
-[benchmarks/README.md](benchmarks/README.md)；完整结果和分析保存在本地
-bench/results/，不作为 raw data 提交到仓库。
-
-## Allocator ablation
-
-allocator ablation 保持同一 benchmark harness 和 workload，只在构建期切换：
-
-~~~text
-STM_ALLOCATOR_MODE=system
-STM_ALLOCATOR_MODE=tier
-~~~
-
-本次固定 6 个代表配置，每种 allocator 运行 5 次独立进程，共 60 次运行：
-
-~~~text
-57/60 valid
-3 invalid
-0 checksum mismatch
-~~~
-
-完整点上，TierAlloc 在单线程和低冲突 8T 的 throughput 提升约 15.5%～30.3%，
-p99 通常下降；但高冲突 WwSTM 20T、10R/90W 下 throughput 下降约 11.0%，
-p99 上升约 11.3%，说明 allocator 不是所有场景的普遍赢家。高冲突时冲突管理、
-wound/abort 交互和调度成本可能已经主导结果，这是 allocator 对照支持的工程推断，
-不是事件级 profiling 结论。
-
-## Build / test / benchmark
-
-项目要求 C++17、CMake 3.14+ 和本地 vendored GoogleTest。下面的命令使用独立的
-Release 构建目录，并将 WwSTM mode=0 显式传给测试目标：
+在仓库根目录运行：
 
 ~~~bash
 cmake -S . -B /tmp/castm-package-release \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=0"
-cmake --build /tmp/castm-package-release -j2
-ctest --test-dir /tmp/castm-package-release --output-on-failure
+cmake --build /tmp/castm-package-release --target run_tests stm_benchmark -j2
+ctest --test-dir /tmp/castm-package-release --output-on-failure --timeout 60
 ~~~
 
-VERIFY 构建：
+单点运行检查：
 
 ~~~bash
-cmake -S . -B /tmp/castm-package-verify \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=1"
-cmake --build /tmp/castm-package-verify --target run_tests -j2
-ctest --test-dir /tmp/castm-package-verify --output-on-failure
+/tmp/castm-package-release/benchmarks/stm_benchmark \
+  --backend ww --threads 4 --read-ratio 50 --contention low \
+  --warmup-ms 100 --measure-ms 300 --run 1 --csv
 ~~~
 
-ASan + UBSan 构建：
+短时运行用于检查接入和 checksum；性能结论使用报告中的独立进程重复实验。
 
-~~~bash
-cmake -S . -B /tmp/castm-package-asan-ubsan \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_CXX_FLAGS="-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer -DSTM_WW_VERIFY_LOGIC_MODE=0" \
-  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
-ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
-  cmake --build /tmp/castm-package-asan-ubsan --target run_tests -j2
-ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
-  ctest --test-dir /tmp/castm-package-asan-ubsan --output-on-failure
-~~~
+## 当前范围
 
-可复现 benchmark smoke run（不在 CI 中执行）：
+这是单机进程内的内存事务原型，目前没有 WAL、崩溃恢复或网络服务。
+代码同时使用原子操作和互斥锁；已有测试和实验不构成 lock-free、wait-free、
+无饥饿或完整隔离级别的证明。测试和性能报告分别列出已验证行为与尚未验证的范围。
 
-~~~bash
-cmake -S . -B /tmp/castm-bench-release -DCMAKE_BUILD_TYPE=Release
-cmake --build /tmp/castm-bench-release --target stm_benchmark -j2
-python3 scripts/run_stm_benchmark.py \
-  --binary /tmp/castm-bench-release/benchmarks/stm_benchmark \
-  --smoke --warmup-ms 100 --measure-ms 300 --repetitions 1
-~~~
-
-## Repository layout
+## 目录
 
 ~~~text
-include/OccSTM     OCC transaction, read/write set and versioned variable
-include/WwSTM      Wound-Wait context, Locator, Record and descriptor protocol
-include/EBRManager epoch slots, retirement and deferred reclamation
-include/TierAlloc  CentralHeap, ThreadHeap and size-class allocator
-src/EBRManager     EBR implementation units
-src                allocator and STM implementation units
-benchmarks         unified benchmark executable and benchmark documentation
-scripts             benchmark runners, summarizers and plotting tools
-tests               GoogleTest correctness, stress and lifetime tests
-BUG-*.md            one document per investigated root cause
-docs/interview     resume bullets and project presentation notes
+include/OccSTM      乐观事务、版本链与条带锁
+include/WwSTM       Locator、descriptor、事务上下文与提交协议
+include/EBRManager  线程槽位、退休队列与延迟回收
+include/TierAlloc   中央堆、线程堆与 size class
+src                非模板实现
+tests              当前及历史 GoogleTest 源文件
+benchmarks         统一事务 workload
+scripts            实验 runner、汇总与绘图
+docs/testing.md    测试范围与验证记录
+docs/performance   历史实验报告、CSV 与来源记录
+docs/interview     简历与面试材料
+BUG-*.md           各修复阶段的历史取证记录
 ~~~
-
-## Project status
-
-The correctness baseline is tagged wwstm-correctness-stable at 540ac36b. The performance
-benchmark and allocator ablation are reproducible on the recorded WSL2 host, with invalid
-progress points preserved as N/A. The next work is presentation polish rather than another
-protocol rewrite.

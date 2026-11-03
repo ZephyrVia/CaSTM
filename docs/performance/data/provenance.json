@@ -1,0 +1,176 @@
+{
+  "packaged_on": "2026-11-04",
+  "packaging_source_commit": "da9634b47bd1e37e0700725e4aab845393d5213b",
+  "note": "Historical numeric CSV snapshots copied byte-for-byte; original experiments were not rerun during documentation packaging. Absolute binary/result paths omitted from metadata.",
+  "experiments": [
+    {
+      "name": "stm",
+      "source_result_directory": "20260903-130419",
+      "metadata": {
+        "benchmark": "CaSTM unified STM benchmark",
+        "git_commit": "4c47011a7cfd6a978772d8cfa80f273dd6ca4981",
+        "build_type": "Release",
+        "optimization": "-O3",
+        "NDEBUG": "1",
+        "STM_WW_VERIFY_LOGIC_MODE": "0",
+        "STM_WW_TEST_HOOKS": "0",
+        "march_native": "opt-in (disabled unless the build requested STM_BENCHMARK_NATIVE)",
+        "compiler": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "cpu_model": "Intel(R) Core(TM) i5-14600KF",
+        "logical_cpu_count": "20",
+        "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+        "kernel": "6.18.33.2-microsoft-standard-WSL2",
+        "contention_low": "65536 keys unless --low-key-count overrides it",
+        "contention_high": "16 keys unless --high-key-count overrides it",
+        "measurement_window": "worker starts; in-flight logical transactions finish before join",
+        "parameters": {
+          "backends": "mutex,shared_mutex,occ,ww",
+          "high_key_count": 16,
+          "latency_sampling": "one logical transaction per 256 committed transactions",
+          "low_key_count": 65536,
+          "max_attempts": 1000000,
+          "measure_ms": 5000,
+          "ops_per_tx": 8,
+          "repetitions": 3,
+          "seed": 3394748143,
+          "threads": [
+            1,
+            2,
+            4,
+            8,
+            16,
+            20
+          ],
+          "warmup_ms": 1000,
+          "workloads": [
+            [
+              90,
+              "low"
+            ],
+            [
+              90,
+              "high"
+            ],
+            [
+              50,
+              "low"
+            ],
+            [
+              50,
+              "high"
+            ],
+            [
+              10,
+              "low"
+            ],
+            [
+              10,
+              "high"
+            ]
+          ]
+        }
+      },
+      "files": {
+        "stm-raw.csv": {
+          "sha256": "a3f25d7febc7ecbf4fe98515818ce54286c1f5381419a2c8bfb0dfb45ff8d603",
+          "bytes": 50688
+        },
+        "stm-summary.csv": {
+          "sha256": "870d8644a4f64c155b756a70dfcda83bd75b3c0746b19ac252d65216b244e571",
+          "bytes": 14968
+        }
+      }
+    },
+    {
+      "name": "allocator",
+      "source_result_directory": "allocator-ablation-20260904-061709",
+      "metadata": {
+        "benchmark": "CaSTM allocator ablation",
+        "git_commit": "6998448493cc4b4593a01fdabc1246a52b223856",
+        "build_type": "Release",
+        "optimization": "-O3",
+        "NDEBUG": "1",
+        "STM_WW_VERIFY_LOGIC_MODE": "0",
+        "STM_WW_TEST_HOOKS": "0",
+        "march_native": "disabled (default; no -march=native)",
+        "compiler": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "cpu_model": "Intel(R) Core(TM) i5-14600KF",
+        "logical_cpu_count": "20",
+        "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+        "system_allocator_sha256": "7012ee4786f7ea135ef52912bf4e5719c499fe1be4db6703e2837ca4aa5a60c4",
+        "tier_allocator_sha256": "6264f45d7ceb9e813036bd561cf60ba1f7064b69d73d815ec5a332779fda6093",
+        "allocator_switch": "STM_ALLOCATOR_MODE=system or tier at benchmark target configure time",
+        "system_mode": "Occ VersionNode/explicit transaction allocations use ::operator new/delete; Ww VersionNode/WriteRecord use ::operator new/delete",
+        "tier_mode": "Occ VersionNode/explicit transaction allocations use ThreadHeap; Ww VersionNode/WriteRecord use ThreadHeap",
+        "native_mode": "historical defaults: Occ TierAlloc, Ww system allocator",
+        "excluded_from_switch": "Ww TxDescriptor (alignas(64)); EBR GarbageNode metadata; std::vector buffers; benchmark TMVar containers; StripedLockTable",
+        "tieralloc_config": "kChunkSize=2MiB; kMaxAlloc=256KiB; kClassCount=104; kMaxCentralCacheSize=64",
+        "contention_low": "65536 keys",
+        "contention_high": "16 keys",
+        "measurement_window": "worker starts; in-flight logical transactions finish before join",
+        "parameters": {
+          "allocators": [
+            "system",
+            "tier"
+          ],
+          "configurations": [
+            {
+              "backend": "occ",
+              "contention": "low",
+              "read_ratio": 50,
+              "threads": 1
+            },
+            {
+              "backend": "ww",
+              "contention": "low",
+              "read_ratio": 50,
+              "threads": 1
+            },
+            {
+              "backend": "occ",
+              "contention": "low",
+              "read_ratio": 50,
+              "threads": 8
+            },
+            {
+              "backend": "ww",
+              "contention": "low",
+              "read_ratio": 50,
+              "threads": 8
+            },
+            {
+              "backend": "occ",
+              "contention": "high",
+              "read_ratio": 50,
+              "threads": 8
+            },
+            {
+              "backend": "ww",
+              "contention": "high",
+              "read_ratio": 10,
+              "threads": 20
+            }
+          ],
+          "high_key_count": 16,
+          "low_key_count": 65536,
+          "max_attempts": 1000000,
+          "measure_ms": 5000,
+          "ops_per_tx": 8,
+          "repetitions": 5,
+          "seed": 3394748143,
+          "warmup_ms": 1000
+        }
+      },
+      "files": {
+        "allocator-raw.csv": {
+          "sha256": "e39384482e507746cdaca9fe4480722f580e68a08b05964d9f22caeaa27c8520",
+          "bytes": 7472
+        },
+        "allocator-summary.csv": {
+          "sha256": "36250a74e95732b0e6e1692821404bbb87d7dcba518de5235d5a2316232b97ae",
+          "bytes": 1525
+        }
+      }
+    }
+  ]
+}
