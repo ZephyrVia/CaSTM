@@ -1,0 +1,25 @@
+{
+  "source_commit": "92a2605b266679fff81e4519ff2e3f4ea5ed76c7",
+  "runtime_baseline": "e558c929f25780aa9cef09c8f0980516812bcdde",
+  "runtime_source_changed": false,
+  "analysis": "first/last 60s medians; VmSize linear regression excludes first 120s",
+  "matplotlib_version": "3.10.9",
+  "sha256": {
+    "docs/validation/occ-memory-soak-2026-11-04/analysis.json": "c457553907a42bdffbaae5bef521a0be1aa0b7be569da2d41447b7ea970ca6ca",
+    "docs/validation/occ-memory-soak-2026-11-04/metadata.json": "e422c65eb7e9d826d2c0a1991b385d783323040b09ed2ed44b6649a47c951bbe",
+    "docs/validation/occ-memory-soak-2026-11-04/native-build-flags.txt": "a5f1a0fcf5c00a004963f30d17ed54503240383a9213433ab1d17174f5713714",
+    "docs/validation/occ-memory-soak-2026-11-04/native-process.txt": "d91091edc536311e0e602e743a721649f4f0eba288da806cd543288934741eaf",
+    "docs/validation/occ-memory-soak-2026-11-04/native-result.json": "b326863696d61b4a2d917c95bd91909d2e51b6f68bff624885bcb7999de9bd59",
+    "docs/validation/occ-memory-soak-2026-11-04/native-samples.csv": "e558f1d84d71cbfde42c2a20d77e0a8c3d01e9cf94be5bff64dcd07a0b8c9af8",
+    "docs/validation/occ-memory-soak-2026-11-04/sha256.json": "b6fd6c0c1c1a75d3c228e8b68dff4400ac21ac5d4d831e639713ad91fa9d4f91",
+    "docs/validation/occ-memory-soak-2026-11-04/state.json": "6deb9961c9736b9a5a21e364ee2142141d4d1dd14c3762799b29edf7676d38c0",
+    "docs/validation/occ-memory-soak-2026-11-04/system-build-flags.txt": "4650cf4f50e6683cb04232d1de32ec968b52e6414b9fbb7c52fb08d7ae40dbf1",
+    "docs/validation/occ-memory-soak-2026-11-04/system-process.txt": "ab03aa341679689f62e77d50d6d80fe0c839af8194efed24d69d631c34ed1bb3",
+    "docs/validation/occ-memory-soak-2026-11-04/system-result.json": "82d59e9a39c6cbd69f880f36099143b10b8346dd9e2778e1a040e14d040aad8f",
+    "docs/validation/occ-memory-soak-2026-11-04/system-samples.csv": "d125165bf89368c2cdcf4816b955d3fd857c94525e1c363397f35681bdbc591f",
+    "docs/validation/occ-memory-soak-2026-11-04/verification.json": "5e8745591406d2470cec41ea63baa990c2b54d521a1a6f05962cd300f55073ec",
+    "docs/images/validation/occ-memory-soak-2026-11-04.png": "42201ef9364803af537ff8680675071032077049e5ab488a1a8b9655135effc2",
+    "docs/images/validation/occ-memory-soak-2026-11-04.svg": "f3f4ccf7ad6175f1a499c08f1703598aa17f7e9621091e1d22fa7b4779d23bb7",
+    "scripts/plot_memory_soak.py": "9dbfefb36f48e6cafc6f7563c2e27256c52a017c58668b5ea606243e0e3d84d1"
+  }
+}

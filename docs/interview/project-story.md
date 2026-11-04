@@ -153,5 +153,6 @@ TSan 在 system allocator 下验证了 20 个 OccSTM 用例及 2 个 EBR 用例�
 限制到两个逻辑 CPU 后，又复现并修复槽位复用链边竞争，见
 [BUG-11](../../BUG-11-EBR线程槽位复用链边竞争.md)；普通调度通过不能替代不同调度条件的检查。
 ASan 关闭泄漏检测，线程退出保留 chunk 的边界也仍然存在。
-失败原因、退避对照和已发现的历史链边竞争修复已完成。下一步测长时运行与 RSS，
-进一步检查慢读者与线程 churn；新的热点路径优化需要单独 profiling 后决定。
+后续对 native 和 system 各进行了 30 分钟内存与回收验证，慢读者和线程 churn 的
+checksum 与探针回收对账通过。默认 TierAlloc 在线程反复退出时仍持续保留映射，
+具体数据与边界见[长时报告](../performance/occ-memory-soak.md)。

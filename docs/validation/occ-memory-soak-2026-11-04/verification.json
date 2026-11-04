@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "allocator": "native",
+      "samples": 2180,
+      "active_seconds": 1800.002931,
+      "writes": 14398943,
+      "payloads_destroyed": 14399003,
+      "phases": 3
+    },
+    {
+      "allocator": "system",
+      "samples": 2180,
+      "active_seconds": 1800.0028069999998,
+      "writes": 14398654,
+      "payloads_destroyed": 14398714,
+      "phases": 3
+    }
+  ]
+}

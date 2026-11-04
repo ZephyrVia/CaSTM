@@ -48,4 +48,5 @@
 - 锁基线通常更快；现有数据不能证明普遍加速、线性扩展或无饥饿。
 - 当前包含互斥锁，验证只覆盖明确列出的测试；追加 EBR 修复后 mode=0/ASan+UBSan 各 64 个通过，VERIFY 57 个通过、7 个跳过，另有 1 个禁用用例。
 - TSan 仅验证 20 个 OccSTM 用例及 2 个 EBR 用例和 system allocator；ASan 关闭泄漏检测，TierAlloc 仍在线程退出时保留部分 chunk，不能写成全仓库无竞争、完整无泄漏或生产就绪。
+- 60 分钟长时验证中，慢读者与线程 churn 的探针回收和 checksum 对账通过；默认 TierAlloc 的线程退出保留映射仍随创建次数增长，见[长时报告](../performance/occ-memory-soak.md)。
 - 最终源码 `19d43f6` 四项远端 CI 通过；其 108 次性能复测中 none 为 30/36 次有效，yield/jitter 各 36/36。修复前含已知竞争的独立批次不能用来宣称 EBR 修复的开销百分比。

@@ -154,3 +154,5 @@ benchmark 默认仍为 none，通过 `--backoff jitter` 选择随机退避。没
 
 测试与 checksum 只覆盖明确断言的行为，不证明完整隔离级别、全部 EBR 内存模型
 或无泄漏。退避仍持有 EBR guard；长时 RSS、慢读者积压和长期线程 churn 仍待验证。
+后续已针对给定负载完成独立的 [60 分钟内存与回收验证](occ-memory-soak.md)，
+原吞吐实验的数据与验证范围保持原样。

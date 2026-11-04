@@ -16,6 +16,7 @@ CaSTM 将进程内共享变量的读写组织成事务，实现了 OccSTM 和 Ww
 | 构建选项与代码阅读顺序 | [构建指南](OSTM_WW%20系统构建指南.md) |
 | 启用、跳过、禁用及未纳入构建的测试 | [测试范围与验证记录](docs/testing.md) |
 | 性能结论、限制及可核验 CSV | [最终修复后的性能复测](docs/performance/occ-ebr-performance.md)、[历史性能报告](docs/performance/README.md)、[OccSTM 诊断与退避](docs/performance/occ-retry-diagnostics.md) |
+| 长时内存、慢读者与线程创建退出 | [60 分钟回收验证报告](docs/performance/occ-memory-soak.md) |
 | benchmark 构建、运行和汇总 | [实验使用说明](benchmarks/README.md) |
 | 并发问题的取证与修复过程 | [BUG 索引](BUG-00-索引.md) |
 | 项目展示 | [简历描述](docs/interview/resume-bullets.md)、[面试讲稿](docs/interview/project-story.md) |
@@ -101,7 +102,9 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 
 VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
 mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
-长期线程 churn 的内存有界性尚未得到验证。
+60 分钟验证中，对象回收计数与 checksum 均匹配；默认 TierAlloc 在线程反复创建退出
+时仍持续保留映射，10 分钟阶段内 VmSize 初末窗口中位数增加约 4.26 GiB，详见
+[长时报告](docs/performance/occ-memory-soak.md)。
 
 ## 性能结果
 

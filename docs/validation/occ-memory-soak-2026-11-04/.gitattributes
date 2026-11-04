@@ -1,0 +1,4 @@
+*.csv -text whitespace=cr-at-eol
+*.txt -text
+*.json -text
+*-build-flags.txt -text whitespace=-blank-at-eol,-blank-at-eof

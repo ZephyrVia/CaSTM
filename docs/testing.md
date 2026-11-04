@@ -1,8 +1,15 @@
 # 测试范围与验证记录
 
-当前分支 `codex/occ-reclamation-audit` 在已通过远端 CI 的性能诊断提交
+版本链剪枝审计分支 `codex/occ-reclamation-audit` 在已通过远端 CI 的性能诊断提交
 `8cd38e0` 上补充版本链剪枝审计。入口仍是
 [tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。
+
+## 长时内存与回收验证
+
+`codex/occ-memory-soak` 在未更改运行时源码的情况下，对 OccSTM 的 native 和 system
+分配路径各运行 30 分钟，覆盖稳定线程、慢读者和线程反复创建退出。六个阶段的
+checksum、探针回收与最终析构对账通过；默认 TierAlloc 在线程 churn 下的虚拟内存
+持续增长。[报告、曲线和原始数据](performance/occ-memory-soak.md)说明范围与限制。
 
 ## 线程槽位复用修复的追加验证
 
