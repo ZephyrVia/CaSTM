@@ -13,6 +13,7 @@ add_executable(run_tests
 
     OccSTM/test_TMVar.cpp
     OccSTM/test_Transaction.cpp
+    OccSTM/test_Reclamation.cpp
     benchmarks/test_Diagnostics.cpp
     # OccSTM/test_STM.cpp
     # OccSTM/test_STM_Tree.cpp
