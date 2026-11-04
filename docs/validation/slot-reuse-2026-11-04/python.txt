@@ -1,0 +1,14 @@
+test_per_worker_counts_reconcile_with_csv_for_all_backends (test_benchmark_integration.BenchmarkIntegrationTests) ... ok
+test_unwritable_diagnostics_is_reported_as_invalid (test_benchmark_integration.BenchmarkIntegrationTests) ... ok
+test_malformed_and_empty_output_are_invalid (test_benchmark_runner.RunnerTests) ... ok
+test_nonzero_exit_overrides_valid_csv (test_benchmark_runner.RunnerTests) ... ok
+test_reason_and_multiline_error_survive_stderr (test_benchmark_runner.RunnerTests) ... ok
+test_signal_is_distinguished (test_benchmark_runner.RunnerTests) ... ok
+test_timeout_has_no_invented_counters (test_benchmark_runner.RunnerTests) ... ok
+test_archived_summary_is_unchanged (test_benchmark_summary.SummaryTests) ... ok
+test_retry_policies_cannot_be_averaged_together (test_benchmark_summary.SummaryTests) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.207s
+
+OK

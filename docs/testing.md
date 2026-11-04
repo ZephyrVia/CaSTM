@@ -4,6 +4,16 @@
 `8cd38e0` 上补充版本链剪枝审计。入口仍是
 [tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。
 
+## 线程槽位复用修复的追加验证
+
+`52c39dd` 的 TSan 仍在远端失败。本地普通调度下多次通过后，限制为两个逻辑 CPU
+复现 `LockFreeReuseStack` 的 next 读写竞争，详见 [BUG-11](../BUG-11-EBR线程槽位复用链边竞争.md)。
+最新修复新增槽位独占所有权回归，总计登记 65 个 C++ 用例：Release、ASan/UBSan
+各 64 个通过；VERIFY 57 个通过、7 个跳过；均保留 1 个禁用用例。Python 9 个方法通过。
+TSan 范围为 system allocator 下 20 个 OccSTM 用例与 2 个 EBR 用例，CI 重复 50 轮。
+本地普通调度和双核调度各重复 100 轮，共 4,400 次执行通过，独立日志及哈希见
+[验证记录](validation/slot-reuse-2026-11-04/result.json)。各阶段的失败与通过均分别保留。
+
 ## EBR 桶复用修复的追加验证
 
 `89578c1` 的 [CI #9](https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034) 中

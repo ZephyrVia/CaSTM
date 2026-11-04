@@ -2,6 +2,9 @@
 
 记录日期：2026-11-04，分支 `codex/occ-reclamation-audit`。
 
+后续修复提交 `52c39dd` 的 TSan 仍失败；限制本地 CPU 数量后发现独立的槽位复用
+链边竞争，见 [BUG-11](BUG-11-EBR线程槽位复用链边竞争.md)。本页保留桶复用修复的阶段证据。
+
 原子 prev 修复提交 `9bccd33` 的四项 CI 曾通过，随后仅增加性能报告的 `89578c1`
 在 [CI #9](https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034) 的 TSan job
 失败，其他三项成功。公开页面只显示退出码 66，远端完整日志需要登录，未读取其

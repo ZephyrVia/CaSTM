@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <mutex>
@@ -170,6 +172,49 @@ TEST_F(EBRManagerTest, ConcurrentEpochRecyclingKeepsReadersAlive) {
     }
     EXPECT_EQ(corrupt_reads.load(), 0);
     EXPECT_EQ(destroyed.load(), iterations + 1);
+}
+
+TEST_F(EBRManagerTest, ReuseStackPreservesExclusiveOwnership) {
+    struct Node {
+        Node* next = nullptr;
+        std::atomic<bool> owned{false};
+    };
+    std::array<Node, 4> nodes;
+    LockFreeReuseStack<Node> stack;
+    for (auto& node : nodes) stack.push(&node);
+    std::atomic<bool> start{false};
+    std::atomic<unsigned> duplicate_owners{0}, visits{0};
+    std::vector<std::thread> workers;
+    for (int worker = 0; worker < 4; ++worker) {
+        workers.emplace_back([&] {
+            while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+            for (int n = 0; n < 20000; ++n) {
+                auto* node = stack.pop();
+                if (!node) continue;
+                if (node->owned.exchange(true, std::memory_order_acq_rel))
+                    duplicate_owners.fetch_add(1, std::memory_order_relaxed);
+                visits.fetch_add(1, std::memory_order_relaxed);
+                if ((n & 63) == 0) std::this_thread::yield();
+                node->owned.store(false, std::memory_order_release);
+                stack.push(node);
+            }
+        });
+    }
+    start.store(true, std::memory_order_release);
+    for (auto& worker : workers) worker.join();
+    EXPECT_EQ(duplicate_owners.load(), 0u);
+    EXPECT_EQ(visits.load(), 80000u);
+    std::array<bool, 4> seen{};
+    for (size_t n = 0; n < nodes.size(); ++n) {
+        auto* node = stack.pop();
+        auto found = std::find_if(nodes.begin(), nodes.end(),
+                                  [node](const Node& candidate) { return &candidate == node; });
+        ASSERT_NE(found, nodes.end());
+        const auto index = static_cast<size_t>(found - nodes.begin());
+        EXPECT_FALSE(seen[index]);
+        seen[index] = true;
+    }
+    EXPECT_EQ(stack.pop(), nullptr);
 }
 
 // ==========================================
