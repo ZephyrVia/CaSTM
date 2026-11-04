@@ -4,6 +4,23 @@
 `8cd38e0` 上补充版本链剪枝审计。入口仍是
 [tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。
 
+## EBR 桶复用修复的追加验证
+
+`89578c1` 的 [CI #9](https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034) 中
+TSan 失败，其他三项成功。本地对原 `9bccd33` 二进制增加重复次数后，第 10 轮
+报告读者访问与版本节点释放的数据竞争。完整证据与修复见
+[BUG-10](../BUG-10-EBR纪元推进与退休桶复用竞争.md)。这说明下文历史 10 轮通过有其覆盖限制。
+
+最新修复新增 EBR 并发桶复用回归，总计登记 64 个 C++ 用例：Release 和 ASan/UBSan
+各 63 个通过；VERIFY 为 56 个通过、7 个跳过；均保留原有 1 个禁用用例。Python
+9 个方法通过。TSan 对 system allocator 下的 20 个 OccSTM 用例及新增 EBR 用例
+重复 100 轮，2,100 次执行通过；CI 使用同一过滤范围重复 50 轮（1,050 次）。
+没有全仓库/TierAlloc 的 TSan 或完整泄漏检测结论。
+[验证记录](validation/ebr-reclamation-2026-11-04/result.json)保留本地日志与哈希。
+
+下文为此前原子链边修复及更早阶段的记录，测试数量、CI 和性能不能直接挪用为
+这次 EBR 修复的结果。
+
 ## 并发剪枝审计的验证
 
 新增 `OccSTM/test_Reclamation.cpp` 的 5 个用例，总计登记 63 个 C++ 用例：

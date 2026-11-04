@@ -9,6 +9,7 @@
 
 // 引入你的头文件路径
 #include "EBRManager/EBRManager.hpp"
+#include "EBRManager/guard.hpp"
 #include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
 
 // ==========================================
@@ -110,6 +111,66 @@ protected:
         }
     }
 };
+
+// Readers retain immutable payloads while other threads repeatedly advance
+// epochs and reuse the three retirement buckets. Sanitizers check the actual
+// load/delete overlap; the counters also require every retired object to drain.
+TEST_F(EBRManagerTest, ConcurrentEpochRecyclingKeepsReadersAlive) {
+    struct Probe {
+        uint64_t value;
+        uint64_t complement;
+        std::atomic<int>& destroyed;
+        Probe(uint64_t value, std::atomic<int>& destroyed)
+            : value(value), complement(~value), destroyed(destroyed) {}
+        ~Probe() { destroyed.fetch_add(1, std::memory_order_relaxed); }
+    };
+    constexpr int iterations = 2000;
+    auto* manager = EBRManager::instance();
+    std::atomic<int> destroyed{0}, corrupt_reads{0};
+    std::atomic<Probe*> shared{new Probe(0, destroyed)};
+    std::atomic<bool> start{false};
+    std::vector<std::thread> workers;
+    for (int reader = 0; reader < 4; ++reader) {
+        workers.emplace_back([&] {
+            while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+            for (int n = 0; n < iterations; ++n) {
+                ebr::Guard guard(*manager);
+                const auto* node = shared.load(std::memory_order_acquire);
+                const auto value = node->value;
+                if ((n & 31) == 0) std::this_thread::yield();
+                if (node->complement != ~value)
+                    corrupt_reads.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+    workers.emplace_back([&] {
+        while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+        for (int n = 1; n <= iterations; ++n) {
+            ebr::Guard guard(*manager);
+            auto* previous = shared.exchange(new Probe(n, destroyed), std::memory_order_acq_rel);
+            manager->retire(previous);
+        }
+    });
+    for (int advancer = 0; advancer < 2; ++advancer) {
+        workers.emplace_back([&] {
+            while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+            for (int n = 0; n < iterations; ++n) {
+                ebr::Guard guard(*manager);
+            }
+        });
+    }
+    start.store(true, std::memory_order_release);
+    for (auto& worker : workers) worker.join();
+    {
+        ebr::Guard guard(*manager);
+        manager->retire(shared.exchange(nullptr, std::memory_order_acq_rel));
+    }
+    for (int n = 0; n < 16; ++n) {
+        ebr::Guard guard(*manager);
+    }
+    EXPECT_EQ(corrupt_reads.load(), 0);
+    EXPECT_EQ(destroyed.load(), iterations + 1);
+}
 
 // ==========================================
 // 3. 基础功能测试

@@ -1,0 +1,697 @@
+Running main() from /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc
+
+Repeating all tests (iteration 1) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] Global test environment set-up.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (146 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (146 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (5 ms)
+[----------] 1 test from OccConcurrencyTest (5 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (95 ms)
+[----------] 5 tests from OccReclamationTest (96 ms total)
+
+[==========] 20 tests from 5 test suites ran. (249 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 2) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (99 ms)
+[----------] 5 tests from OccReclamationTest (101 ms total)
+
+[==========] 20 tests from 5 test suites ran. (106 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 3) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (95 ms)
+[----------] 5 tests from OccReclamationTest (96 ms total)
+
+[==========] 20 tests from 5 test suites ran. (101 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 4) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (5 ms)
+[----------] 1 test from OccConcurrencyTest (5 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (99 ms)
+[----------] 5 tests from OccReclamationTest (101 ms total)
+
+[==========] 20 tests from 5 test suites ran. (106 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 5) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (106 ms)
+[----------] 5 tests from OccReclamationTest (107 ms total)
+
+[==========] 20 tests from 5 test suites ran. (112 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 6) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (94 ms)
+[----------] 5 tests from OccReclamationTest (96 ms total)
+
+[==========] 20 tests from 5 test suites ran. (101 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 7) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (5 ms)
+[----------] 1 test from OccConcurrencyTest (5 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (95 ms)
+[----------] 5 tests from OccReclamationTest (97 ms total)
+
+[==========] 20 tests from 5 test suites ran. (102 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 8) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (95 ms)
+[----------] 5 tests from OccReclamationTest (97 ms total)
+
+[==========] 20 tests from 5 test suites ran. (102 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 9) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+[       OK ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning (93 ms)
+[----------] 5 tests from OccReclamationTest (94 ms total)
+
+[==========] 20 tests from 5 test suites ran. (100 ms total)
+[  PASSED  ] 20 tests.
+
+Repeating all tests (iteration 10) . . .
+
+Note: Google Test filter = Occ*
+[==========] Running 20 tests from 5 test suites.
+[----------] 4 tests from OccDataStructureTest
+[ RUN      ] OccDataStructureTest.IntegerInitialization
+[       OK ] OccDataStructureTest.IntegerInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.ComplexObjectInitialization
+[       OK ] OccDataStructureTest.ComplexObjectInitialization (0 ms)
+[ RUN      ] OccDataStructureTest.VersionChaining
+[       OK ] OccDataStructureTest.VersionChaining (0 ms)
+[ RUN      ] OccDataStructureTest.AllocationSanity
+[       OK ] OccDataStructureTest.AllocationSanity (0 ms)
+[----------] 4 tests from OccDataStructureTest (0 ms total)
+
+[----------] 8 tests from OccTransactionTest
+[ RUN      ] OccTransactionTest.BasicStoreAndCommit
+[       OK ] OccTransactionTest.BasicStoreAndCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadYourOwnWrites
+[       OK ] OccTransactionTest.ReadYourOwnWrites (0 ms)
+[ RUN      ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+[       OK ] OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit (0 ms)
+[ RUN      ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+[       OK ] OccTransactionTest.ReadOnlyCommitAfterHeadChanges (0 ms)
+[ RUN      ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+[       OK ] OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry (0 ms)
+[ RUN      ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+[       OK ] OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks (0 ms)
+[ RUN      ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+[       OK ] OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict (0 ms)
+[ RUN      ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+[       OK ] OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry (0 ms)
+[----------] 8 tests from OccTransactionTest (0 ms total)
+
+[----------] 1 test from OccConcurrencyTest
+[ RUN      ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+[       OK ] OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum (4 ms)
+[----------] 1 test from OccConcurrencyTest (4 ms total)
+
+[----------] 2 tests from OccAtomicApiTest
+[ RUN      ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+[       OK ] OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue (0 ms)
+[ RUN      ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+[       OK ] OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable (0 ms)
+[----------] 2 tests from OccAtomicApiTest (0 ms total)
+
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (0 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+[       OK ] OccReclamationTest.PublishedEdgeReadOverlapsPruning (0 ms)
+[ RUN      ] OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+==================
+WARNING: ThreadSanitizer: data race (pid=42658)
+  Write of size 8 at 0x7b0800009780 by thread T15 (mutexes: write M152):
+    #0 operator delete(void*) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:126 (libtsan.so.0+0x8e3f8)
+    #1 STM::Memory::systemDeallocate(void*) /mnt/d/编码练习/事务原型/castm/include/STM/Allocator.hpp:31 (run_tests+0x2ebc2)
+    #2 STM::Memory::occDeallocate(void*) /mnt/d/编码练习/事务原型/castm/include/STM/Allocator.hpp:44 (run_tests+0x2ebc2)
+    #3 STM::Occ::detail::VersionNode<int>::operator delete(void*) /mnt/d/编码练习/事务原型/castm/include/OccSTM/VersionNode.hpp:27 (run_tests+0x2ebc2)
+    #4 STM::Occ::TMVar<int>::chainDeleter_(void*) /mnt/d/编码练习/事务原型/castm/include/OccSTM/TMVar.hpp:74 (run_tests+0x2ebc2)
+    #5 GarbageNode::~GarbageNode() /mnt/d/编码练习/事务原型/castm/src/EBRManager/GarbageNode.cpp:13 (run_tests+0x89be5)
+    #6 GarbageCollector::collect(GarbageNode*) /mnt/d/编码练习/事务原型/castm/include/EBRManager/GarbageCollector.hpp:51 (run_tests+0x89924)
+    #7 EBRManager::collectGarbage_(unsigned long) /mnt/d/编码练习/事务原型/castm/src/EBRManager/EBRManager.cpp:92 (run_tests+0x89924)
+    #8 EBRManager::leave() /mnt/d/编码练习/事务原型/castm/src/EBRManager/EBRManager.cpp:49 (run_tests+0x89a21)
+    #9 ebr::Guard::~Guard() /mnt/d/编码练习/事务原型/castm/include/EBRManager/guard.hpp:15 (run_tests+0x39d1c)
+    #10 operator() /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:239 (run_tests+0x39d1c)
+    #11 __invoke_impl<void, (anonymous namespace)::OccReclamationTest_ConcurrentSnapshotTraversalAndPruning_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:61 (run_tests+0x39d1c)
+    #12 __invoke<(anonymous namespace)::OccReclamationTest_ConcurrentSnapshotTraversalAndPruning_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:96 (run_tests+0x39d1c)
+    #13 _M_invoke<0> /usr/include/c++/11/bits/std_thread.h:259 (run_tests+0x39d1c)
+    #14 operator() /usr/include/c++/11/bits/std_thread.h:266 (run_tests+0x39d1c)
+    #15 _M_run /usr/include/c++/11/bits/std_thread.h:211 (run_tests+0x39d1c)
+    #16 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Previous read of size 8 at 0x7b0800009780 by thread T11:
+    #0 int STM::Occ::Transaction::load<int>(STM::Occ::TMVar<int>&) <null> (run_tests+0x34b66)
+    #1 operator() /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:233 (run_tests+0x39cc4)
+    #2 __invoke_impl<void, (anonymous namespace)::OccReclamationTest_ConcurrentSnapshotTraversalAndPruning_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:61 (run_tests+0x39cc4)
+    #3 __invoke<(anonymous namespace)::OccReclamationTest_ConcurrentSnapshotTraversalAndPruning_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:96 (run_tests+0x39cc4)
+    #4 _M_invoke<0> /usr/include/c++/11/bits/std_thread.h:259 (run_tests+0x39cc4)
+    #5 operator() /usr/include/c++/11/bits/std_thread.h:266 (run_tests+0x39cc4)
+    #6 _M_run /usr/include/c++/11/bits/std_thread.h:211 (run_tests+0x39cc4)
+    #7 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Mutex M152 (0x7b4400005ea8) created at:
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock /usr/include/x86_64-linux-gnu/c++/11/bits/gthr-default.h:749 (run_tests+0x8990a)
+    #2 std::mutex::lock() /usr/include/c++/11/bits/std_mutex.h:100 (run_tests+0x8990a)
+    #3 std::lock_guard<std::mutex>::lock_guard(std::mutex&) /usr/include/c++/11/bits/std_mutex.h:229 (run_tests+0x8990a)
+    #4 GarbageCollector::collect(GarbageNode*) /mnt/d/编码练习/事务原型/castm/include/EBRManager/GarbageCollector.hpp:44 (run_tests+0x8990a)
+    #5 EBRManager::collectGarbage_(unsigned long) /mnt/d/编码练习/事务原型/castm/src/EBRManager/EBRManager.cpp:92 (run_tests+0x8990a)
+    #6 EBRManager::leave() /mnt/d/编码练习/事务原型/castm/src/EBRManager/EBRManager.cpp:49 (run_tests+0x89a21)
+    #7 ebr::Guard::~Guard() /mnt/d/编码练习/事务原型/castm/include/EBRManager/guard.hpp:15 (run_tests+0x2376f)
+    #8 operator() /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Transaction.cpp:174 (run_tests+0x2376f)
+    #9 __invoke_impl<void, OccConcurrencyTest_BoundedConcurrentIncrementsPreserveCommittedSum_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:61 (run_tests+0x2376f)
+    #10 __invoke<OccConcurrencyTest_BoundedConcurrentIncrementsPreserveCommittedSum_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:96 (run_tests+0x2376f)
+    #11 _M_invoke<0> /usr/include/c++/11/bits/std_thread.h:259 (run_tests+0x2376f)
+    #12 operator() /usr/include/c++/11/bits/std_thread.h:266 (run_tests+0x2376f)
+    #13 _M_run /usr/include/c++/11/bits/std_thread.h:211 (run_tests+0x2376f)
+    #14 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Thread T15 (tid=42776, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdbbd4)
+    #3 void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdbbd4)
+    #4 testing::Test::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2687 (run_tests+0xc38c5)
+    #5 testing::TestInfo::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2836 (run_tests+0xc3acd)
+    #6 testing::TestSuite::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:3015 (run_tests+0xc6892)
+    #7 testing::internal::UnitTestImpl::RunAllTests() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5920 (run_tests+0xcb8e7)
+    #8 bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdc255)
+    #9 bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdc255)
+    #10 testing::UnitTest::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5484 (run_tests+0xc3c87)
+    #11 RUN_ALL_TESTS() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/include/gtest/gtest.h:2317 (run_tests+0x8deec)
+    #12 main /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc:64 (run_tests+0x8deec)
+
+  Thread T11 (tid=42777, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdbbd4)
+    #3 void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdbbd4)
+    #4 testing::Test::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2687 (run_tests+0xc38c5)
+    #5 testing::TestInfo::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2836 (run_tests+0xc3acd)
+    #6 testing::TestSuite::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:3015 (run_tests+0xc6892)
+    #7 testing::internal::UnitTestImpl::RunAllTests() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5920 (run_tests+0xcb8e7)
+    #8 bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdc255)
+    #9 bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdc255)
+    #10 testing::UnitTest::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5484 (run_tests+0xc3c87)
+    #11 RUN_ALL_TESTS() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/include/gtest/gtest.h:2317 (run_tests+0x8deec)
+    #12 main /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc:64 (run_tests+0x8deec)
+
+SUMMARY: ThreadSanitizer: data race ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:126 in operator delete(void*)
+==================

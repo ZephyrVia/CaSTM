@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "branch": "codex/occ-reclamation-audit",
+  "base_commit": "89578c1d9c0f7c3a4e88881171f3827cf06fbb86",
+  "working_tree_dirty": true,
+  "failed_remote_ci": {
+    "commit": "89578c1d9c0f7c3a4e88881171f3827cf06fbb86",
+    "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034",
+    "failed_job": "https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034/job/126376689244",
+    "tsan_exit_code": 66,
+    "other_jobs": "success",
+    "log_access": "Public page shows exit code 66; full remote logs require authentication and were not read."
+  },
+  "local_reproducer": {
+    "source_commit": "9bccd33aa23ad965fa0b4a82230f73c32dc67f5f",
+    "command": "timeout 180s setarch x86_64 -R env TSAN_OPTIONS=halt_on_error=1 /tmp/castm-occ-tsan-after/tests/run_tests --gtest_filter='Occ*' --gtest_repeat=100",
+    "exit_code": 66,
+    "failed_iteration": 10,
+    "test": "OccReclamationTest.ConcurrentSnapshotTraversalAndPruning",
+    "report": "delete of a retired version node races with Transaction::load"
+  },
+  "local_results": [
+    {
+      "mode": "release",
+      "passed": 63,
+      "skipped": 0,
+      "disabled": 1,
+      "failed": 0
+    },
+    {
+      "mode": "verify",
+      "passed": 56,
+      "skipped": 7,
+      "disabled": 1,
+      "failed": 0
+    },
+    {
+      "mode": "asan-ubsan",
+      "passed": 63,
+      "skipped": 0,
+      "disabled": 1,
+      "failed": 0,
+      "detect_leaks": false
+    },
+    {
+      "mode": "python",
+      "passed": 9,
+      "skipped": 0,
+      "failed": 0
+    },
+    {
+      "mode": "tsan",
+      "filter": "Occ*:EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive",
+      "tests_per_iteration": 21,
+      "repetitions": 100,
+      "passed_executions": 2100,
+      "allocator": "system",
+      "exit_code": 0
+    }
+  ],
+  "source_sha256": {
+    "include/EBRManager/EBRManager.hpp": "f441495311caf6e051c8a13f6fb3c08298bcfc5ceeb8938eaf96ad82dd69fc4b",
+    "src/EBRManager/EBRManager.cpp": "c12fe4816d588a2cbe316f7c090daa68f85d9e5184155205c91d0786bd13720b",
+    "tests/EBRManager/test_EBRManager.cpp": "1b2246d4bee7e04763c671db41273846a299493ea859855be3839992835b1dee",
+    ".github/workflows/ci.yml": "36c1b0ecbbaa1e2ccda5e2990178a844b44a261a323fc9f6b5d206995d6e422f"
+  },
+  "sha256": {
+    "asan-ubsan.txt": "fcc796fec5944753850a2e099e7e3692cc2ba37d70b04479bc0eaf4f3ab80da5",
+    "python.txt": "f1fc4c00ab0647c6a077e5b2222e89a41982d9f832c176d106c18bf643ae2009",
+    "release.txt": "9757acfab4375af4099b78fa1ae51db8db476a39ca8e9039284f27215c4328e3",
+    "tsan-after.txt.gz": "b84264d0cdc087ec55313fc86f70eb13f1ae9990eeac335e24fca40a786c2e0a",
+    "tsan-before.txt": "8571c8c84b564331bb31e93939c508b38a25b4eefc880b4f3a01c216ac47584d",
+    "verify.txt": "ef4894e58abc4c620b89dc7131ce6523b1ef5c44154dec2f09e7ac89f023b31e"
+  },
+  "limitations": [
+    "The remote failure and local race are separately recorded; the remote stack was not available.",
+    "The epoch-recycling regression is a concurrent stress test, not a deterministic reproduction of one particular interleaving.",
+    "TSan covers the listed 21 tests with the system allocator; no TierAlloc or whole-repository TSan claim.",
+    "Fix results in this record are local; remote CI must be checked for the subsequently pushed fix commit.",
+    "The earlier performance matrix measures 9bccd33 and must not be described as the performance of this EBR fix."
+  ]
+}

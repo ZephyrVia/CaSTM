@@ -1,0 +1,144 @@
+Internal ctest changing into directory: /tmp/castm-occ-verify
+Test project /tmp/castm-occ-verify
+      Start  1: EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive
+ 1/64 Test  #1: EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive ..............................   Passed    0.00 sec
+      Start  2: EBRManagerTest.SingleThreadBasicFlow
+ 2/64 Test  #2: EBRManagerTest.SingleThreadBasicFlow ..................................................   Passed    0.00 sec
+      Start  3: EBRManagerTest.MultiThreadStress_ThreadHeap_Integration
+ 3/64 Test  #3: EBRManagerTest.MultiThreadStress_ThreadHeap_Integration ...............................   Passed    0.01 sec
+      Start  4: EBRManagerTest.CustomDeleterWithStandardHeap
+ 4/64 Test  #4: EBRManagerTest.CustomDeleterWithStandardHeap ..........................................   Passed    0.00 sec
+      Start  5: EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind
+ 5/64 Test  #5: EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind .............................   Passed    0.00 sec
+      Start  6: EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch
+ 6/64 Test  #6: EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch ..............................   Passed    0.00 sec
+      Start  7: EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod
+ 7/64 Test  #7: EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod ........................   Passed    0.00 sec
+      Start  8: OccDataStructureTest.IntegerInitialization
+ 8/64 Test  #8: OccDataStructureTest.IntegerInitialization ............................................   Passed    0.00 sec
+      Start  9: OccDataStructureTest.ComplexObjectInitialization
+ 9/64 Test  #9: OccDataStructureTest.ComplexObjectInitialization ......................................   Passed    0.00 sec
+      Start 10: OccDataStructureTest.VersionChaining
+10/64 Test #10: OccDataStructureTest.VersionChaining ..................................................   Passed    0.00 sec
+      Start 11: OccDataStructureTest.AllocationSanity
+11/64 Test #11: OccDataStructureTest.AllocationSanity .................................................   Passed    0.00 sec
+      Start 12: OccTransactionTest.BasicStoreAndCommit
+12/64 Test #12: OccTransactionTest.BasicStoreAndCommit ................................................   Passed    0.03 sec
+      Start 13: OccTransactionTest.ReadYourOwnWrites
+13/64 Test #13: OccTransactionTest.ReadYourOwnWrites ..................................................   Passed    0.03 sec
+      Start 14: OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit
+14/64 Test #14: OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit .............................   Passed    0.03 sec
+      Start 15: OccTransactionTest.ReadOnlyCommitAfterHeadChanges
+15/64 Test #15: OccTransactionTest.ReadOnlyCommitAfterHeadChanges .....................................   Passed    0.03 sec
+      Start 16: OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry
+16/64 Test #16: OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry ......................   Passed    0.03 sec
+      Start 17: OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks
+17/64 Test #17: OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks .......................   Passed    0.03 sec
+      Start 18: OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict
+18/64 Test #18: OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict ...............................   Passed    0.02 sec
+      Start 19: OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry
+19/64 Test #19: OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry .................   Passed    0.03 sec
+      Start 20: OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum
+20/64 Test #20: OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum ....................   Passed    0.03 sec
+      Start 21: OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue
+21/64 Test #21: OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue ...............   Passed    0.03 sec
+      Start 22: OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable
+22/64 Test #22: OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable ...................   Passed    0.03 sec
+      Start 23: OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+23/64 Test #23: OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot ...................   Passed    0.02 sec
+      Start 24: OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+24/64 Test #24: OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves .................   Passed    0.02 sec
+      Start 25: OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+25/64 Test #25: OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce ........................   Passed    0.02 sec
+      Start 26: OccReclamationTest.PublishedEdgeReadOverlapsPruning
+26/64 Test #26: OccReclamationTest.PublishedEdgeReadOverlapsPruning ...................................   Passed    0.02 sec
+      Start 27: OccReclamationTest.ConcurrentSnapshotTraversalAndPruning
+27/64 Test #27: OccReclamationTest.ConcurrentSnapshotTraversalAndPruning ..............................   Passed    0.03 sec
+      Start 28: BenchmarkDiagnosticsTest.TerminalRetryGuardRetainsAllAttemptsAndCauses
+28/64 Test #28: BenchmarkDiagnosticsTest.TerminalRetryGuardRetainsAllAttemptsAndCauses ................   Passed    0.00 sec
+      Start 29: BenchmarkDiagnosticsTest.MixedAbortsAndSuccessAreCountedOnce
+29/64 Test #29: BenchmarkDiagnosticsTest.MixedAbortsAndSuccessAreCountedOnce ..........................   Passed    0.00 sec
+      Start 30: BenchmarkDiagnosticsTest.ExceptionsKeepTheirKindAndPreviousRetries
+30/64 Test #30: BenchmarkDiagnosticsTest.ExceptionsKeepTheirKindAndPreviousRetries ....................   Passed    0.00 sec
+      Start 31: BenchmarkDiagnosticsTest.MergeIncludesFailedLogicalTransactionsAndHistogramBounds
+31/64 Test #31: BenchmarkDiagnosticsTest.MergeIncludesFailedLogicalTransactionsAndHistogramBounds .....   Passed    0.00 sec
+      Start 32: BenchmarkDiagnosticsTest.BackoffRunsOnlyBetweenAttemptsAndResetsPerLogicalOperation
+32/64 Test #32: BenchmarkDiagnosticsTest.BackoffRunsOnlyBetweenAttemptsAndResetsPerLogicalOperation ...   Passed    0.00 sec
+      Start 33: BenchmarkDiagnosticsTest.JitterDelayIsBoundedEvenForHugeRetryCounts
+33/64 Test #33: BenchmarkDiagnosticsTest.JitterDelayIsBoundedEvenForHugeRetryCounts ...................   Passed    0.00 sec
+      Start 34: WwSTMTreeTest.ConcurrentPathIncrement
+34/64 Test #34: WwSTMTreeTest.ConcurrentPathIncrement .................................................   Passed    0.03 sec
+      Start 35: WwSTMTreeTest.HighContentionProgressAndConsistency
+35/64 Test #35: WwSTMTreeTest.HighContentionProgressAndConsistency ....................................***Not Run (Disabled)   0.00 sec
+      Start 36: TxContextTest.TwoThreadsConcurrentIncrement
+36/64 Test #36: TxContextTest.TwoThreadsConcurrentIncrement ...........................................   Passed    0.02 sec
+      Start 37: TxContextTest.RepeatReadVersionChangeAborts
+37/64 Test #37: TxContextTest.RepeatReadVersionChangeAborts ...........................................   Passed    0.00 sec
+      Start 38: TMVarTest.Construction
+38/64 Test #38: TMVarTest.Construction ................................................................   Passed    0.00 sec
+      Start 39: TMVarTest.StableNodeReadSnapshot
+39/64 Test #39: TMVarTest.StableNodeReadSnapshot ......................................................   Passed    0.00 sec
+      Start 40: TMVarTest.ReadYourOwnWrites
+40/64 Test #40: TMVarTest.ReadYourOwnWrites ...........................................................   Passed    0.00 sec
+      Start 41: TMVarTest.IsolationSnapshotRead
+41/64 Test #41: TMVarTest.IsolationSnapshotRead .......................................................   Passed    0.00 sec
+      Start 42: TMVarTest.WriteWriteConflict
+42/64 Test #42: TMVarTest.WriteWriteConflict ..........................................................   Passed    0.00 sec
+      Start 43: TMVarTest.ReentrantWriteReusesOneLocatorAndDraft
+43/64 Test #43: TMVarTest.ReentrantWriteReusesOneLocatorAndDraft ......................................   Passed    0.00 sec
+      Start 44: TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp
+44/64 Test #44: TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp ...............................   Passed    0.00 sec
+      Start 45: TMVarTest.AbortAndRollback
+45/64 Test #45: TMVarTest.AbortAndRollback ............................................................   Passed    0.00 sec
+      Start 46: TMVarTest.AbortedRecordReadSnapshotUsesOldNode
+46/64 Test #46: TMVarTest.AbortedRecordReadSnapshotUsesOldNode ........................................   Passed    0.00 sec
+      Start 47: TMVarTest.ActiveRecordReadSnapshotUsesOldNode
+47/64 Test #47: TMVarTest.ActiveRecordReadSnapshotUsesOldNode .........................................   Passed    0.00 sec
+      Start 48: TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten
+48/64 Test #48: TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten .........................   Passed    0.00 sec
+      Start 49: TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus
+49/64 Test #49: TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus .............................   Passed    0.00 sec
+      Start 50: TMVarTest.AbortMultiVariableKeepsOldLogicalView
+50/64 Test #50: TMVarTest.AbortMultiVariableKeepsOldLogicalView .......................................   Passed    0.00 sec
+      Start 51: TMVarTest.MultiVariableAtomicityStress
+51/64 Test #51: TMVarTest.MultiVariableAtomicityStress ................................................   Passed    0.00 sec
+      Start 52: TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful
+52/64 Test #52: TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful ...................................   Passed    0.00 sec
+      Start 53: TMVarTest.HeadIdentityChangeRetriesSnapshot
+53/64 Test #53: TMVarTest.HeadIdentityChangeRetriesSnapshot ...........................................***Skipped   0.00 sec
+      Start 54: TMVarTest.HelpingFlattensAbortedAndCommittedLocators
+54/64 Test #54: TMVarTest.HelpingFlattensAbortedAndCommittedLocators ..................................   Passed    0.00 sec
+      Start 55: TMVarTest.StealAbortedLockViaNodeGeneration
+55/64 Test #55: TMVarTest.StealAbortedLockViaNodeGeneration ...........................................   Passed    0.00 sec
+      Start 56: TMVarTest.PublishedWriteRecordRetiresAfterHelper
+56/64 Test #56: TMVarTest.PublishedWriteRecordRetiresAfterHelper ......................................***Skipped   0.00 sec
+      Start 57: TMVarTest.PublishedWriteRecordRetiredExactlyOnce
+57/64 Test #57: TMVarTest.PublishedWriteRecordRetiredExactlyOnce ......................................***Skipped   0.00 sec
+      Start 58: TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly
+58/64 Test #58: TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly ........................................***Skipped   0.00 sec
+      Start 59: TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment
+59/64 Test #59: TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment ..........................   Passed    0.00 sec
+      Start 60: TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord
+60/64 Test #60: TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord ......................***Skipped   0.00 sec
+      Start 61: TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup
+61/64 Test #61: TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup ..........................***Skipped   0.00 sec
+      Start 62: TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr
+62/64 Test #62: TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr .........................***Skipped   0.00 sec
+      Start 63: TxLinkedListTest.SingleThreadAppend
+63/64 Test #63: TxLinkedListTest.SingleThreadAppend ...................................................   Passed    0.00 sec
+      Start 64: TxLinkedListTest.TwoThreadsConcurrentAppend
+64/64 Test #64: TxLinkedListTest.TwoThreadsConcurrentAppend ...........................................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 63
+
+Total Test time (real) =   0.54 sec
+
+The following tests did not run:
+	 35 - WwSTMTreeTest.HighContentionProgressAndConsistency (Disabled)
+	 53 - TMVarTest.HeadIdentityChangeRetriesSnapshot (Skipped)
+	 56 - TMVarTest.PublishedWriteRecordRetiresAfterHelper (Skipped)
+	 57 - TMVarTest.PublishedWriteRecordRetiredExactlyOnce (Skipped)
+	 58 - TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly (Skipped)
+	 60 - TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord (Skipped)
+	 61 - TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup (Skipped)
+	 62 - TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr (Skipped)

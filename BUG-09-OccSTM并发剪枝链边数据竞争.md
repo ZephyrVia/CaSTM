@@ -2,6 +2,9 @@
 
 记录日期：2026-11-04。工作分支：`codex/occ-reclamation-audit`。
 
+后续重复验证发现独立的 EBR 桶复用竞争，见 [BUG-10](BUG-10-EBR纪元推进与退休桶复用竞争.md)。
+本页保留原子链边修复的历史证据；一次 CI 通过不构成整个回收协议无竞争的证明。
+
 性能诊断提交 `8cd38e005627a6c139e266abc574c603d0df4ee6` 已推送到
 `origin/codex/perf-diagnostics`，并确认 [CI #7](https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054)
 的 Release、VERIFY、ASan/UBSan 三个 job 全部通过。审计分支在该结果确认后创建。

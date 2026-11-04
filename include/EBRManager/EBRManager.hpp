@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include "EBRManager/ThreadSlotManager.hpp"
 #include "EBRManager/GarbageCollector.hpp"
 #include "EBRManager/LockFreeSingleLinkedList.hpp"
@@ -34,13 +35,17 @@ public:
 private:
     EBRManager();
     ~EBRManager();
-    bool tryAdvanceEpoch_();
+    GarbageNode* tryAdvanceAndDetach_();
     void collectGarbage_(uint64_t epoch_to_collect);
     ThreadSlot* getLocalSlot_();
 
 private:
     alignas(64) std::atomic<uint64_t> global_epoch_;
     LockFreeSingleLinkedList garbage_lists_[kNumEpochLists];
+
+    // Advancing and detaching the expired bucket form one operation. Otherwise
+    // a delayed collector can steal new retirements after the ring wraps.
+    std::mutex epoch_advance_mutex_;
 
     ThreadSlotManager slot_manager_;
     GarbageCollector garbage_collector_;

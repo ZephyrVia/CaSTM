@@ -41,18 +41,16 @@ void EBRManager::leave() {
         // 标记线程离开临界区（变为非活跃状态）
         slot->leave();
 
-        if (tryAdvanceEpoch_()) {
-            uint64_t current_global_epoch = global_epoch_.load(std::memory_order_relaxed);
-
-            if (current_global_epoch >= 2) {
-                uint64_t epoch_to_collect = current_global_epoch - 2;
-                collectGarbage_(epoch_to_collect);
-            }
-        }
+        // Destructors run after releasing the epoch lock. The detached list is
+        // private, so later epoch advances cannot add new nodes to this batch.
+        garbage_collector_.collect(tryAdvanceAndDetach_());
     }
 }
 
-bool EBRManager::tryAdvanceEpoch_() {
+GarbageNode* EBRManager::tryAdvanceAndDetach_() {
+    std::unique_lock<std::mutex> epoch_lock(epoch_advance_mutex_, std::try_to_lock);
+    if (!epoch_lock.owns_lock()) return nullptr;
+
     // 使用 acquire 内存序加载，确保我们能看到其他线程 leave 操作释放的最新状态
     uint64_t current_epoch = global_epoch_.load(std::memory_order_acquire);
     
@@ -71,16 +69,23 @@ bool EBRManager::tryAdvanceEpoch_() {
     });
 
     if (!can_advance) {
-        return false; // 发现掉队者，无法推进
+        return nullptr; // 发现掉队者，无法推进
     }
 
     // 如果没有掉队者，尝试原子地将全局纪元加一
-    return global_epoch_.compare_exchange_strong(
+    if (!global_epoch_.compare_exchange_strong(
         current_epoch, 
         current_epoch + 1,
         std::memory_order_acq_rel,
         std::memory_order_relaxed
-    );
+    )) return nullptr;
+
+    // Use this advance's epoch, not a later global load. Keep the epoch lock
+    // until the old list has been detached, before its modulo bucket can be
+    // reused by a subsequent generation of retirees.
+    const uint64_t advanced_epoch = current_epoch + 1;
+    if (advanced_epoch < 2) return nullptr;
+    return garbage_lists_[(advanced_epoch - 2) % kNumEpochLists].stealList();
 }
 
 void EBRManager::collectGarbage_(uint64_t epoch_to_collect) {

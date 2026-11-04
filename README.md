@@ -82,10 +82,10 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 
 2026-11-04 在 `codex/occ-reclamation-audit` 分支上本地验证；各阶段记录分别保留。
 
-- Release / mode=0：62 个测试通过，1 个高冲突测试保持 disabled。
-- Debug / VERIFY：55 个通过，7 个按设计跳过，1 个 disabled。
-- ASan + UBSan / mode=0：62 个通过，1 个 disabled，leak detection 关闭。
-- TSan：20 个 OccSTM 用例在 system allocator 下重复 10 轮通过；没有全仓库或
+- Release / mode=0：63 个测试通过，1 个高冲突测试保持 disabled。
+- Debug / VERIFY：56 个通过，7 个按设计跳过，1 个 disabled。
+- ASan + UBSan / mode=0：63 个通过，1 个 disabled，leak detection 关闭。
+- TSan：20 个 OccSTM 用例及 1 个 EBR 用例在 system allocator 下重复 100 轮通过；没有全仓库或
   TierAlloc 的 TSan 通过结论。
 - Python runner 的 9 个 unittest 方法通过，包含四后端短时计数对账。
 - 部分历史 OccSTM/TierAlloc/WwSTM 测试仍未纳入默认构建。命令及范围见[测试记录](docs/testing.md)。
@@ -96,13 +96,19 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 包括新增的 OccSTM TSan job；[核验记录](docs/validation/occ-reclamation-2026-11-04/ci.json)
 保存提交和各 job 链接。
 
+随后文档提交 `89578c1` 的 [CI #9](https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034)
+出现 TSan 失败，本地重复运行也发现节点读取与释放竞争。最新 EBR 修复将纪元推进
+和退休桶摘取同步，已通过上述本地验证；失败、修复及验证范围见
+[BUG-10](BUG-10-EBR纪元推进与退休桶复用竞争.md)。先前通过记录保留为对应提交的历史证据。
+
 VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
 mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
 长期线程 churn 的内存有界性尚未得到验证。
 
 ## 性能结果
 
-修复提交 `9bccd33` 在四项 CI 通过后完成 108 次 OccSTM 策略对照：立即重试
+以下 `9bccd33` 的性能属于仍含 BUG-10 的中间版本，不能代表最新 EBR 修复。
+该提交在当时四项 CI 通过后完成 108 次 OccSTM 策略对照：立即重试
 31/36 次有效，`yield` 和随机退避各 36/36 次有效；5 次失败均为 retry_limit，
 108 次最终 checksum 全部匹配。20T、50R/50W、16 keys 的立即重试 0/3 次有效，
 随机退避 3/3 次有效，平均 **930,577 ± 21,732 TPS**，p99 均值 **446.65 μs**。
