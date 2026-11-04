@@ -25,8 +25,15 @@ ASan 仍关闭泄漏检测，1 个 WwSTM 高冲突用例仍保持 disabled。
 [验证记录与原始日志](validation/occ-reclamation-2026-11-04/result.json) 保存哈希及完整范围。
 
 性能诊断提交的 [远端 CI #7](https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054)
-已确认三项 job 成功。审计分支在本地新增 `occ-tsan` CI job；上述修复结果均为本地
-运行，不能借用基线提交的远端 CI 状态。下文保留先前两个阶段的验证记录。
+已确认三项 job 成功。审计修复提交 `9bccd33aa23ad965fa0b4a82230f73c32dc67f5f`
+推送后，[远端 CI #8](https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427)
+的 mode=0、VERIFY、ASan/UBSan、OccSTM TSan 四项 job 全部成功；精确提交与 job
+链接见 [CI 核验记录](validation/occ-reclamation-2026-11-04/ci.json)。上述测试数量
+来自保留的本地日志，远端状态单独记录。原 result.json 是推送前的本地验证快照。
+
+四项 CI 通过后，已对该干净提交执行 108 次性能复测，103 次有效，5 次立即重试
+触发 retry_limit，108 次最终 checksum 均匹配。性能失败与单元测试结果分别记录，
+见[修复后性能报告](performance/occ-postfix-performance.md)。下文保留先前两个阶段的验证记录。
 
 ## 诊断与退避分支的新增覆盖
 

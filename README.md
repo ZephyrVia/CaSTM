@@ -1,4 +1,4 @@
-[![CI](https://github.com/ZephyrVia/CaSTM/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ZephyrVia/CaSTM/actions/workflows/ci.yml)
+[![CI](https://github.com/ZephyrVia/CaSTM/actions/workflows/ci.yml/badge.svg?branch=codex%2Focc-reclamation-audit)](https://github.com/ZephyrVia/CaSTM/actions?query=branch%3Acodex%2Focc-reclamation-audit)
 
 # CaSTM
 
@@ -15,7 +15,7 @@ CaSTM 将进程内共享变量的读写组织成事务，实现了 OccSTM 和 Ww
 | WwSTM 当前协议与实现位置 | [设计说明](OSTM_WW.md) |
 | 构建选项与代码阅读顺序 | [构建指南](OSTM_WW%20系统构建指南.md) |
 | 启用、跳过、禁用及未纳入构建的测试 | [测试范围与验证记录](docs/testing.md) |
-| 性能结论、限制及可核验 CSV | [历史性能报告](docs/performance/README.md)、[OccSTM 诊断与退避](docs/performance/occ-retry-diagnostics.md) |
+| 性能结论、限制及可核验 CSV | [修复后性能复测](docs/performance/occ-postfix-performance.md)、[历史性能报告](docs/performance/README.md)、[OccSTM 诊断与退避](docs/performance/occ-retry-diagnostics.md) |
 | benchmark 构建、运行和汇总 | [实验使用说明](benchmarks/README.md) |
 | 并发问题的取证与修复过程 | [BUG 索引](BUG-00-索引.md) |
 | 项目展示 | [简历描述](docs/interview/resume-bullets.md)、[面试讲稿](docs/interview/project-story.md) |
@@ -91,15 +91,27 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 - 部分历史 OccSTM/TierAlloc/WwSTM 测试仍未纳入默认构建。命令及范围见[测试记录](docs/testing.md)。
 
 剪枝竞争的复现、原子链边修复和延迟回收证据见
-[BUG-09](BUG-09-OccSTM并发剪枝链边数据竞争.md)。性能诊断提交 `8cd38e0` 的
-[三项远端 CI](https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054) 已通过；
-该结果不替代审计分支的 CI 验证。
+[BUG-09](BUG-09-OccSTM并发剪枝链边数据竞争.md)。审计修复提交 `9bccd33` 的
+[四项远端 CI](https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427) 已全部通过，
+包括新增的 OccSTM TSan job；[核验记录](docs/validation/occ-reclamation-2026-11-04/ci.json)
+保存提交和各 job 链接。
 
 VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
 mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
 长期线程 churn 的内存有界性尚未得到验证。
 
 ## 性能结果
+
+修复提交 `9bccd33` 在四项 CI 通过后完成 108 次 OccSTM 策略对照：立即重试
+31/36 次有效，`yield` 和随机退避各 36/36 次有效；5 次失败均为 retry_limit，
+108 次最终 checksum 全部匹配。20T、50R/50W、16 keys 的立即重试 0/3 次有效，
+随机退避 3/3 次有效，平均 **930,577 ± 21,732 TPS**，p99 均值 **446.65 μs**。
+
+本轮 20 线程低冲突的随机退避吞吐较立即重试下降 0.42%～3.89%；与修复前独立
+批次相比，部分配置也有下降，不能声称修复没有性能开销。完整配置、历史差异、
+统计边界和原始数据见[修复后性能复测](docs/performance/occ-postfix-performance.md)。
+benchmark 默认 `--backoff none`，可显式选择 `jitter`；`STM::atomically` 默认使用
+同一随机退避策略。以下历史矩阵与本轮分开保存。
 
 已有实验使用同一 Shared KV/Array workload，每个事务 8 个操作，比较 mutex、
 shared_mutex、OccSTM 和 WwSTM。以下是历史实验结果，本轮没有重跑完整矩阵：
@@ -125,13 +137,9 @@ shared_mutex、OccSTM 和 WwSTM。以下是历史实验结果，本轮没有重�
 
 ![50R/50W high throughput](docs/images/benchmark/throughput-50r50w-high.png)
 
-性能诊断阶段另完成 108 次 OccSTM 退避对照：立即重试 30/36 次有效，`yield` 和
-随机退避各 36/36 次有效。20T、50R/50W、16 keys 的立即重试 0/3 次有效，
-明确触发 retry guard；随机退避 3/3 次有效，平均约 97.3 万 TPS。
-单线程低冲突的平均吞吐下降约 1.5%～2.6%，同样保留在
-[诊断、统计边界与原始数据](docs/performance/occ-retry-diagnostics.md)中。
-benchmark 默认 `--backoff none`，可显式选择 `jitter`；`STM::atomically` 默认使用
-同一随机退避策略。该结果不替代上述历史四后端比较。
+修复前的另一批 108 次 OccSTM 退避实验保留在
+[诊断与退避报告](docs/performance/occ-retry-diagnostics.md)中；其源码仍有后来
+确认的 prev 数据竞争，性能数字不作为当前修复版本的结果，也不与新矩阵混合。
 
 ## 快速构建与运行
 

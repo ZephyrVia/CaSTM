@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "branch": "codex/occ-reclamation-audit",
+  "commit": "9bccd33aa23ad965fa0b4a82230f73c32dc67f5f",
+  "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "Build and test (WwSTM mode=0)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427/job/126372838096"
+    },
+    {
+      "name": "Build and test (VERIFY)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427/job/126372838433"
+    },
+    {
+      "name": "ASan and UBSan",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427/job/126372838406"
+    },
+    {
+      "name": "OccSTM history and reclamation (TSan)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427/job/126372838530"
+    }
+  ],
+  "verification_method": "Public GitHub Actions run page; exact commit matched in branch workflow run listing and all four job cards concluded successfully."
+}

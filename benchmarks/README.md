@@ -243,7 +243,11 @@ repetition of a workload. All policies use the same binary, allocator, seed,
 operation count and attempt budget. `summary.csv` groups by `backoff` when
 present, retaining invalid-run counts. The older plotter rejects mixed policies
 rather than accidentally combining them. See the
-[diagnosis and ablation report](../docs/performance/occ-retry-diagnostics.md).
+[diagnosis and ablation report](../docs/performance/occ-retry-diagnostics.md) for
+the pre-fix experiment. The [post-fix report](../docs/performance/occ-postfix-performance.md)
+reruns the same 108-process matrix on clean commit `9bccd33` after all four CI
+jobs passed. Its 103 valid runs and five retry-limit failures are archived
+separately; historical batches do not isolate the cost of the atomic-edge fix.
 
 Runner regression checks, including short binary counter-reconciliation tests:
 

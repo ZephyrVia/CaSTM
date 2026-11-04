@@ -5,7 +5,9 @@
 性能诊断提交 `8cd38e005627a6c139e266abc574c603d0df4ee6` 已推送到
 `origin/codex/perf-diagnostics`，并确认 [CI #7](https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054)
 的 Release、VERIFY、ASan/UBSan 三个 job 全部通过。审计分支在该结果确认后创建。
-该远端 CI 结果对应性能诊断提交；本页修复的结果是下述本地验证。
+该远端 CI 结果对应性能诊断提交；修复提交 `9bccd33` 随后推送，
+[CI #8](https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427) 的四项 job 也已全部通过。
+下文保留本地复现与修复日志，远端结果单独记录。
 
 ## 问题与复现证据
 
@@ -89,8 +91,11 @@ ASan 设置 `detect_leaks=0`；没有完整泄漏检测结论。
 日志、源码与日志 SHA-256、运行次数见
 [机器可读验证记录](docs/validation/occ-reclamation-2026-11-04/result.json)及
 [修复后 TSan 日志](docs/validation/occ-reclamation-2026-11-04/tsan-after.txt)。
-CI 配置新增 `occ-tsan` job，使用同一构建参数、OccSTM 范围和重复次数；本地验证
-不能当作该修复分支已通过远端 CI 的记录。
+CI 配置新增 `occ-tsan` job，使用同一构建参数、OccSTM 范围和重复次数。
+修复提交 `9bccd33aa23ad965fa0b4a82230f73c32dc67f5f` 的 mode=0、VERIFY、ASan/UBSan
+和 OccSTM TSan 四个远端 job 已核实成功，见
+[CI 核验记录](docs/validation/occ-reclamation-2026-11-04/ci.json)。原 result.json
+保留为推送前的本地验证快照，不修改其当时的 CI 范围说明。
 
 ## 复现命令
 
@@ -123,4 +128,6 @@ Release、VERIFY、ASan/UBSan 和 Python 的构建命令沿用[测试说明](doc
 恢复。长时 RSS、慢读者造成的退休积压及线程 churn 仍需单独实验。
 
 历史 108 次退避对照属于 `codex/perf-diagnostics` 的实现。原始 CSV、参数和哈希
-保持原样，本轮短时集成检查不用于声称原子链边修复的吞吐收益或开销。
+保持原样。四项远端 CI 通过后已在修复提交上另做 108 次对照，见
+[修复后性能报告](docs/performance/occ-postfix-performance.md)；历史批次之间的数值差异
+不用于单独归因原子链边修复的吞吐收益或开销。
