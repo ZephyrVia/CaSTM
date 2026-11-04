@@ -1,0 +1,3 @@
+steady complete: writes=5972 errors=0
+slow_reader complete: writes=6000 errors=0
+thread_churn complete: writes=2400 errors=0

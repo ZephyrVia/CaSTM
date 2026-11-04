@@ -1,0 +1,11 @@
+test_real_short_run (test_memory_soak_report.SoakReportTest) ... ok
+test_rejects_checksum_mismatch (test_memory_soak_report.SoakReportTest) ... ok
+test_rejects_missing_churn_checkpoint (test_memory_soak_report.SoakReportTest) ... ok
+test_rejects_missing_reclamation (test_memory_soak_report.SoakReportTest) ... ok
+test_rejects_unreleased_witness (test_memory_soak_report.SoakReportTest) ... ok
+test_short_run_cannot_be_called_long (test_memory_soak_report.SoakReportTest) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.012s
+
+OK

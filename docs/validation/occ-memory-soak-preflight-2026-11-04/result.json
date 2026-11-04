@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "base_commit": "e558c929f25780aa9cef09c8f0980516812bcdde",
+  "working_tree_dirty": true,
+  "description": "Preflight for the validation-only driver; these 3-second phases are not long-duration evidence.",
+  "sanitizer_checks": [
+    {
+      "sanitizer": "asan",
+      "allocator": "native",
+      "samples": 130,
+      "active_seconds": 9.003183,
+      "writes": 71796,
+      "payloads_destroyed": 71856,
+      "phases": 3
+    },
+    {
+      "sanitizer": "tsan",
+      "allocator": "system",
+      "samples": 130,
+      "active_seconds": 9.003917,
+      "writes": 68946,
+      "payloads_destroyed": 69006,
+      "phases": 3
+    }
+  ],
+  "asan_options": "detect_leaks=0:halt_on_error=1",
+  "ubsan_options": "halt_on_error=1:print_stacktrace=1",
+  "tsan_options": "halt_on_error=1",
+  "tsan_cpu_affinity": [
+    0,
+    1
+  ],
+  "sanitizer_vms_limit_mib": 1000000000,
+  "driver_sha256": "bc4470a33d49bc474d5e9849dd55a703b252f120f0c0b5afdf33897ace86b056",
+  "regression": {
+    "cpp_passed": 64,
+    "cpp_disabled": 1,
+    "python_existing_passed": 9
+  },
+  "sha256": {
+    "asan-process.txt": "765028e6c90be9e6369b80aaec3ab51e969f064fae065fc4b9d22e9eeb78766d",
+    "asan-result.json": "8a65a52fa990536360b7c21fbe443c6b90f519b421be290d588c581056252ef9",
+    "asan-samples.csv": "41cd0e9315f08b7f2376f3fedeac1d86ff3059ea5602f6a28c690bf19688f2c7",
+    "python-existing.txt": "c64edfdc2a7eed11f3529971298cb661d134c4a3bbfd5eb768f46205ed1d9605",
+    "release.txt": "635913c7d2600ddb1efb48fd22f50fb3f1ea439055ce24f12e309bea6d47bd37",
+    "tsan-process.txt": "fc6e494a36cbcffcd51c29841b21528f13f636ff339abd7e79de964495e8e0c4",
+    "tsan-result.json": "0f88269016281a7e9134e80cd2c009a6268e826adbacfc8e92e148b6e08b50b0",
+    "tsan-samples.csv": "471637fd406e82e272051b3f1c3fcbfc0942c1ba8bbe0c21d6ee700e5ad96178",
+    "smoke/metadata.json": "f7b558e84b57240d6b42fc8185267f607ce166695a12ff82e07cbd9d012dbf67",
+    "smoke/native-process.txt": "8262126a227e0a62fcaba77a07d49e47c5b40e2269941079092fddcdc050bc15",
+    "smoke/native-result.json": "2c383581ec084572a59eac6b6077622cbafa2c0cee1570e92ee1476c78bb6bff",
+    "smoke/native-samples.csv": "f6af2fc4c2f797f56e162051404fa4f50dd2efe343bcb94153298d7ac87581e0",
+    "smoke/sha256.json": "43761132790a5949262448f7167e0d8ce46488cbf136842a0351b5d8f820d6ba",
+    "smoke/state.json": "78b7e441a20a8512340fa51bb8b34382950944684fb0957850335c525f900e2a",
+    "smoke/system-process.txt": "6bcdbbe65ef87512d900f347e55843c3afe76ad422e8c9a3b553934b4bee9eea",
+    "smoke/system-result.json": "b498ce35b4f2b6588101cc65c079055ea630719f362b6e66c0a181edd587eff3",
+    "smoke/system-samples.csv": "de14bb92b097eab298af97335cab92328fda5706e66951d2d863d9512b121d9d",
+    "negative-checks.txt": "10c60eb4ab40249c7bf6209f97725b6e2759365fa768e17c40a0a12abbae5b9e"
+  },
+  "negative_checks_passed": 6
+}

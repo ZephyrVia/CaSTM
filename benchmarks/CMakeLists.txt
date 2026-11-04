@@ -48,3 +48,10 @@ option(STM_BENCHMARK_NATIVE "Enable -march=native for stm_benchmark" OFF)
 if(STM_BENCHMARK_NATIVE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(stm_benchmark PRIVATE -march=native)
 endif()
+
+# Explicitly built validation driver; the runtime library has no telemetry hooks.
+add_executable(occ_memory_soak ../tests/validation/occ_memory_soak.cpp)
+target_link_libraries(occ_memory_soak PRIVATE mylib Threads::Threads)
+target_compile_definitions(occ_memory_soak PRIVATE
+    NDEBUG STM_WW_VERIFY_LOGIC_MODE=0 STM_WW_TEST_HOOKS=0
+    STM_ALLOCATOR_MODE=${STM_ALLOCATOR_MODE_VALUE})
