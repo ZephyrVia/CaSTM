@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import io
 import json
 import os
 import platform
@@ -37,7 +39,12 @@ RAW_FIELDS = [
     "expected_checksum",
     "elapsed_s",
     "valid",
-    "error",
+    "error", "failure_reason", "failure_phase", "failure_worker",
+    "aborts", "failed_logical", "retries_p50_upper", "retries_p99_upper", "max_retries",
+    "warmup_attempts", "warmup_aborts", "warmup_committed", "warmup_failed_logical",
+    "abort_snapshot_unavailable", "abort_read_locked", "abort_read_changed",
+    "abort_ww_inactive", "abort_ww_commit", "abort_exception",
+    "process_returncode", "diagnostics_file", "backoff",
 ]
 BACKENDS = ("mutex", "shared_mutex", "occ", "ww")
 FULL_READ_RATIOS = (90, 50, 10)
@@ -99,18 +106,24 @@ def default_thread_points(smoke: bool, logical_cpus: int) -> List[int]:
 
 
 def parse_binary_row(stdout: str) -> Dict[str, str] | None:
-    lines = [line for line in stdout.splitlines() if line.strip()]
-    if not lines:
-        return None
     try:
-        rows = list(csv.DictReader(lines))
+        rows = list(csv.DictReader(io.StringIO(stdout), strict=True))
     except csv.Error:
         return None
-    return rows[-1] if rows else None
+    if len(rows) != 1:
+        return None
+    row = rows[0]
+    required = {"backend", "threads", "attempts", "committed", "valid"}
+    if None in row or not required.issubset(row) or any(value is None for value in row.values()):
+        return None
+    if row["valid"] not in {"0", "1"}:
+        return None
+    return row
 
 
 def failed_row(backend: str, threads: int, read_ratio: int,
-               contention: str, run: int, error: str) -> Dict[str, str]:
+               contention: str, run: int, error: str,
+               reason: str = "process_exit") -> Dict[str, str]:
     return {
         "backend": backend,
         "requested_threads": str(threads),
@@ -130,7 +143,45 @@ def failed_row(backend: str, threads: int, read_ratio: int,
         "elapsed_s": "",
         "valid": "0",
         "error": error,
+        "failure_reason": reason,
+        "failure_phase": "process",
     }
+
+
+def normalize_result(completed: subprocess.CompletedProcess, backend: str, threads: int,
+                     read_ratio: int, contention: str, run: int) -> Dict[str, str]:
+    parsed = parse_binary_row(completed.stdout)
+    process_reason = ("signal" if completed.returncode < 0 else
+                      "process_exit" if completed.returncode else "parse_error")
+    if parsed is None:
+        row = failed_row(backend, threads, read_ratio, contention, run,
+                         completed.stderr.strip() or f"exit code {completed.returncode}; no valid CSV row",
+                         process_reason)
+    else:
+        row = {field: parsed.get(field, "") for field in RAW_FIELDS}
+        row["error"] = " | ".join(filter(None, (row["error"], completed.stderr.strip())))
+        if completed.returncode:
+            row["valid"] = "0"
+            if row["failure_reason"] in {"", "none"}:
+                row["failure_reason"] = process_reason
+                row["failure_phase"] = "process"
+            if not row["error"]:
+                row["error"] = f"exit code {completed.returncode}"
+        elif row["valid"] == "0" and row["failure_reason"] in {"", "none"}:
+            row["failure_reason"] = "unspecified_invalid"
+    row["process_returncode"] = str(completed.returncode)
+    return row
+
+
+def source_manifest(repo: Path) -> Dict[str, str]:
+    paths = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=repo
+    ).decode().split("\0")
+    return {name: hashlib.sha256((repo / name).read_bytes()).hexdigest()
+            for name in sorted(set(paths)) if name and (repo / name).is_file()
+            and (name == "CMakeLists.txt" or name.startswith(
+                ("include/", "src/", "benchmarks/", "tests/", "scripts/")))
+            and (repo / name).suffix in {".hpp", ".cpp", ".py", ".txt", ".cmake"}}
 
 
 def metadata_text(repo: Path, binary: Path, args: argparse.Namespace,
@@ -139,6 +190,7 @@ def metadata_text(repo: Path, binary: Path, args: argparse.Namespace,
     compiler = run_command(("c++", "--version")).splitlines()
     parameters = {
         "backends": args.backends,
+        "backoff": args.backoff,
         "threads": list(threads),
         "workloads": [list(item) for item in workloads],
         "repetitions": args.repetitions,
@@ -153,6 +205,9 @@ def metadata_text(repo: Path, binary: Path, args: argparse.Namespace,
     }
     lines = [
         "benchmark=CaSTM unified STM benchmark",
+        "binary_sha256=" + hashlib.sha256(binary.read_bytes()).hexdigest(),
+        "working_tree_dirty=" + str(bool(run_command(("git", "status", "--porcelain"), repo))).lower(),
+        "source_manifest=" + json.dumps(source_manifest(repo), sort_keys=True),
         f"git_commit={commit or 'unknown'}",
         f"binary={binary}",
         "build_type=Release",
@@ -192,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--low-key-count", type=int, default=65536)
     parser.add_argument("--high-key-count", type=int, default=16)
     parser.add_argument("--seed", type=lambda value: int(value, 0), default=0xCA57BEEF)
+    parser.add_argument("--backoff", choices=("none", "yield", "jitter"), default="none")
     parser.add_argument("--max-attempts", type=int, default=1000000)
     parser.add_argument("--timeout-seconds", type=float,
                         help="per process timeout; default is measure budget plus 30 seconds")
@@ -212,6 +268,8 @@ def main() -> int:
         backends = [item.strip() for item in args.backends.split(",") if item.strip()]
         if not backends or any(item not in BACKENDS for item in backends):
             raise ValueError(f"backends must be drawn from {BACKENDS}")
+        if args.backoff != "none" and backends != ["occ"]:
+            raise ValueError("non-default backoff requires --backends occ")
         logical_cpus = max(1, os.cpu_count() or 1)
         threads = (parse_int_list(args.threads)
                    if args.threads else default_thread_points(args.smoke, logical_cpus))
@@ -235,6 +293,7 @@ def main() -> int:
     raw_path = output_dir / "raw.csv"
     summary_path = output_dir / "summary.csv"
     metadata_path = output_dir / "metadata.txt"
+    (output_dir / "diagnostics").mkdir()
     metadata_path.write_text(metadata_text(repo, binary, args, threads, workloads),
                               encoding="utf-8")
 
@@ -253,6 +312,7 @@ def main() -> int:
                     key_count = (args.low_key_count if contention == "low"
                                  else args.high_key_count)
                     for run in range(1, args.repetitions + 1):
+                        diagnostic = Path("diagnostics") / f"{backend}-t{thread_count}-r{read_ratio}-{contention}-{run}.json"
                         command = [
                             str(binary),
                             "--backend", backend,
@@ -266,6 +326,8 @@ def main() -> int:
                             "--run", str(run),
                             "--seed", str(args.seed),
                             "--max-attempts", str(args.max_attempts),
+                            "--backoff", args.backoff,
+                            "--diagnostics-json", str(output_dir / diagnostic),
                             "--csv",
                         ]
                         try:
@@ -277,21 +339,16 @@ def main() -> int:
                                 text=True,
                                 timeout=timeout,
                             )
-                            row = parse_binary_row(completed.stdout)
-                            error = completed.stderr.strip()
-                            if row is None:
-                                row = failed_row(backend, thread_count, read_ratio,
-                                                 contention, run,
-                                                 error or f"exit code {completed.returncode}")
-                            else:
-                                row = {field: row.get(field, "") for field in RAW_FIELDS}
-                                row["error"] = error
-                                if completed.returncode != 0:
-                                    row["error"] = (row["error"] or
-                                                     f"exit code {completed.returncode}")
-                        except subprocess.TimeoutExpired as error:
+                            row = normalize_result(completed, backend, thread_count,
+                                                   read_ratio, contention, run)
+                        except subprocess.TimeoutExpired:
                             row = failed_row(backend, thread_count, read_ratio,
-                                             contention, run, f"timeout after {timeout:.1f}s")
+                                             contention, run, f"timeout after {timeout:.1f}s", "timeout")
+                        except OSError as error:
+                            row = failed_row(backend, thread_count, read_ratio,
+                                             contention, run, str(error), "launch_error")
+                        row["backoff"] = args.backoff
+                        row["diagnostics_file"] = str(diagnostic) if (output_dir / diagnostic).exists() else ""
                         writer.writerow(row)
                         stream.flush()
                         if row.get("valid", "0") not in {"1", "true", "yes"}:

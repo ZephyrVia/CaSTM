@@ -15,7 +15,7 @@ CaSTM 将进程内共享变量的读写组织成事务，实现了 OccSTM 和 Ww
 | WwSTM 当前协议与实现位置 | [设计说明](OSTM_WW.md) |
 | 构建选项与代码阅读顺序 | [构建指南](OSTM_WW%20系统构建指南.md) |
 | 启用、跳过、禁用及未纳入构建的测试 | [测试范围与验证记录](docs/testing.md) |
-| 性能结论、限制及可核验 CSV | [性能报告](docs/performance/README.md) |
+| 性能结论、限制及可核验 CSV | [历史性能报告](docs/performance/README.md)、[OccSTM 诊断与退避](docs/performance/occ-retry-diagnostics.md) |
 | benchmark 构建、运行和汇总 | [实验使用说明](benchmarks/README.md) |
 | 并发问题的取证与修复过程 | [BUG 索引](BUG-00-索引.md) |
 | 项目展示 | [简历描述](docs/interview/resume-bullets.md)、[面试讲稿](docs/interview/project-story.md) |
@@ -79,13 +79,15 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 
 ## 验证范围
 
-2026-11-04 在源码基线 `da9634b` 上复核；本轮收尾只修改文档与归档数据。
+2026-11-04 在 `codex/perf-diagnostics` 分支上验证，原型标签的历史记录单独保留。
 
-- Release / mode=0：36 个测试通过，1 个高冲突测试保持 disabled。
-- Debug / VERIFY：29 个通过，7 个按设计跳过，1 个 disabled。
-- ASan + UBSan / mode=0：36 个通过，1 个 disabled；命令见[验证记录](docs/testing.md#本轮验证记录)。
-- 默认 CTest 未纳入 OccSTM 独立测试、TierAlloc 独立测试及部分历史 WwSTM 测试。
-- TSan 未在本轮验证；ASan 使用 `detect_leaks=0`，没有完整的 LSan 通过结论。
+- Release / mode=0：57 个测试通过，1 个高冲突测试保持 disabled。
+- Debug / VERIFY：50 个通过，7 个按设计跳过，1 个 disabled。
+- ASan + UBSan / mode=0：57 个通过，1 个 disabled；命令见[验证记录](docs/testing.md)。
+- 新启用 OccSTM TMVar/Transaction 测试，并覆盖失败分类、重试计数与退避边界。
+  部分历史 OccSTM/TierAlloc/WwSTM 测试仍不在默认构建中。
+- Python runner 的 9 个 unittest 方法通过，包含四后端的短时计数对账。
+- TSan 本轮未验证；ASan 使用 `detect_leaks=0`，没有完整的 LSan 通过结论。
 
 VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
 mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
@@ -116,6 +118,14 @@ shared_mutex、OccSTM 和 WwSTM。以下是历史实验结果，本轮没有重�
 包含参数、版本、失败点及统计边界。
 
 ![50R/50W high throughput](docs/images/benchmark/throughput-50r50w-high.png)
+
+本分支另完成 108 次 OccSTM 退避对照：立即重试 30/36 次有效，`yield` 和
+随机退避各 36/36 次有效。20T、50R/50W、16 keys 的立即重试 0/3 次有效，
+明确触发 retry guard；随机退避 3/3 次有效，平均约 97.3 万 TPS。
+单线程低冲突的平均吞吐下降约 1.5%～2.6%，同样保留在
+[诊断、统计边界与原始数据](docs/performance/occ-retry-diagnostics.md)中。
+benchmark 默认 `--backoff none`，可显式选择 `jitter`；`STM::atomically` 默认使用
+同一随机退避策略。该结果不替代上述历史四后端比较。
 
 ## 快速构建与运行
 

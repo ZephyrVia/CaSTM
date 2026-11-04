@@ -13,6 +13,14 @@ namespace Occ {
 
 struct RetryException : public std::exception {};
 
+// Transaction-local diagnostic state. No global counters or timing on the
+// transaction path; callers can inspect the most recent failed attempt.
+enum class AbortReason {
+    None,
+    SnapshotUnavailable,
+    ReadLocked,
+    ReadVersionChanged
+};
 
 class Transaction {
 public:
@@ -21,10 +29,12 @@ public:
 
     void begin() {
         desc_->reset();
+        last_abort_reason_ = AbortReason::None;
         desc_->setReadVersion(GlobalClock::now());
     }
 
     bool commit();
+    AbortReason lastAbortReason() const noexcept { return last_abort_reason_; }
 
     template<typename T>
     T load(TMVar<T>& var);
@@ -45,6 +55,7 @@ private:
 
 private:
     TransactionDescriptor* desc_;
+    AbortReason last_abort_reason_ = AbortReason::None;
 };
 
 
@@ -71,7 +82,7 @@ T Transaction::load(TMVar<T>& var) {
     }
     
     if(curr == nullptr) {
-        // TODO：可更改为return nullptr
+        last_abort_reason_ = AbortReason::SnapshotUnavailable;
         throw RetryException();   
     }
 

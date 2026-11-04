@@ -22,10 +22,15 @@ jobs:
           -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=0"
 
       - name: Build
-        run: cmake --build build-mode0 --target run_tests --parallel 2
+        run: cmake --build build-mode0 --target run_tests stm_benchmark --parallel 2
 
       - name: Test
         run: ctest --test-dir build-mode0 --output-on-failure
+
+      - name: Benchmark runner regressions
+        env:
+          STM_BENCHMARK_BIN: ${{ github.workspace }}/build-mode0/benchmarks/stm_benchmark
+        run: python3 -m unittest discover -s tests/scripts -v
 
   verify-tests:
     name: Build and test (VERIFY)

@@ -171,3 +171,83 @@ The main matrix was recorded at `4c47011`, and the allocator experiment at
 Runs on the current revision are new measurements, not replacements for those
 snapshots. For an offline check of archived hashes, validity and summary
 statistics, use the [report's verification command](../docs/performance/README.md#复核与重新运行).
+
+## Retry diagnostics and OccSTM backoff
+
+`Transaction::lastAbortReason()` reports the first detected OccSTM failure in
+an attempt: `SnapshotUnavailable`, `ReadLocked`, or `ReadVersionChanged`.
+`begin()` clears the reason. A locked read is a conflict on the **lock stripe**;
+this counter alone cannot distinguish a true key conflict from a stripe alias,
+nor does it measure lock-wait time. WwSTM records body inactivity and commit
+failure separately without changing its conflict policy.
+
+CSV now includes terminal failure reason/phase/worker, measured attempts and
+aborts, failed logical transactions, retry histogram percentile upper bounds,
+maximum observed retries, warmup totals and per-cause abort counts. Counts are
+recorded **before** a failed logical transaction stops the run. All attempts,
+including the final failing attempt, count toward the totals. A retry is an
+attempt after the first: `max(0, attempts - 1)`, for success or terminal failure.
+
+Use `--diagnostics-json PATH` to retain each worker's warmup and measurement
+counters, failure information and retry histogram. Bucket 0 represents zero
+retries; bucket `i > 0` represents `[2^(i-1), 2^i-1]` retries. CSV
+`retries_p50_upper`/`retries_p99_upper` use the bucket upper endpoint, capped by
+the observed maximum; they are **not exact percentiles**. Final-sum checks still
+include successful writes from both phases. Latency samples still cover only
+successful measured logical transactions, once per 256 per worker; a zero
+reported latency can mean there were no samples. Terminal failures have no
+latency sample. Each abort is assigned one first-observed cause, not all
+conditions that might also have failed.
+
+The runner distinguishes retry exhaustion, caught allocation/other exceptions,
+checksum mismatch, report I/O failure, timeout, signal, nonzero process exit,
+launch failure and malformed CSV. It preserves the binary's error text and
+stderr. A nonzero exit always invalidates a row. A killed/timed-out process may
+have no diagnostic file or counters; those fields remain empty. This is
+observability, not a guarantee of recovery from arbitrary allocation failures
+inside the STM protocol. Metadata includes a binary SHA-256, dirty-tree flag
+and source-file hashes; an uncommitted experiment is not attributed solely to
+its HEAD commit.
+
+The benchmark default remains `--backoff none` as the reference retry loop.
+For OccSTM, `yield` yields after every abort; `jitter` yields after the first two
+consecutive aborts, then uses randomized exponential delays from 0 through
+1, 2, 4, 8, 16, 32 and 64 microseconds, capped at 64. Zero delay yields.
+Scheduling can exceed that requested cap. The delay runs after write locks
+have been released and only when another attempt is allowed. The failure count
+resets for each logical transaction; RNG state is per worker and independent
+of the workload RNG. Non-default policies are rejected for other backends.
+
+The public `STM::atomically(callback)` now uses this same jitter policy for
+both failed validation and missing history. An optional second argument
+`STM::Occ::BackoffPolicy::None` or `Yield` selects another policy. Both the API
+and benchmark retain their existing logical-transaction EBR guard across
+retries; sleeping readers can delay reclamation. This change does not establish
+bounded memory use or starvation freedom.
+
+```bash
+/tmp/castm-bench-release/benchmarks/stm_benchmark \
+  --backend occ --backoff jitter --threads 20 --read-ratio 50 --contention high \
+  --warmup-ms 300 --measure-ms 1500 --max-attempts 1000000 \
+  --diagnostics-json /tmp/occ-diagnostics.json --csv
+
+python3 scripts/run_retry_ablation.py \
+  --binary /tmp/castm-bench-release/benchmarks/stm_benchmark \
+  --output-dir bench/results/occ-retry-ablation \
+  --threads 1,20 --policies none,yield,jitter --repetitions 3 \
+  --warmup-ms 300 --measure-ms 1500 --max-attempts 1000000
+```
+
+The ablation launches independent processes and rotates policy order for each
+repetition of a workload. All policies use the same binary, allocator, seed,
+operation count and attempt budget. `summary.csv` groups by `backoff` when
+present, retaining invalid-run counts. The older plotter rejects mixed policies
+rather than accidentally combining them. See the
+[diagnosis and ablation report](../docs/performance/occ-retry-diagnostics.md).
+
+Runner regression checks, including short binary counter-reconciliation tests:
+
+```bash
+STM_BENCHMARK_BIN=/tmp/castm-bench-release/benchmarks/stm_benchmark \
+  python3 -m unittest discover -s tests/scripts -v
+```

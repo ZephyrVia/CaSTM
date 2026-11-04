@@ -57,11 +57,15 @@ bool Transaction::validateReadSet() {
             bool locked_by_me = std::binary_search(locks.begin(), locks.end(), idx_ptr);
             
             // 如果被锁了且不是我锁的 -> 冲突
-            if(!locked_by_me) return false;
+            if(!locked_by_me) {
+                last_abort_reason_ = AbortReason::ReadLocked;
+                return false;
+            }
         }
 
         // 身份 + 时间验证
         if(!entry.validator(entry.tmvar_addr, entry.expected_head, rv)) {
+            last_abort_reason_ = AbortReason::ReadVersionChanged;
             return false;
         }
 
@@ -73,7 +77,10 @@ bool Transaction::validateReadSet() {
             void* idx_ptr = reinterpret_cast<void*>(idx);
 
             bool locked_by_me = std::binary_search(locks.begin(), locks.end(), idx_ptr);
-            if(!locked_by_me) return false;
+            if(!locked_by_me) {
+                last_abort_reason_ = AbortReason::ReadLocked;
+                return false;
+            }
         }
     }
     return true;

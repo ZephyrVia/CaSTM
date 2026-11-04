@@ -1,0 +1,760 @@
+{
+  "date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "branch": "codex/perf-diagnostics",
+  "base_tag": "v0.1.0-prototype",
+  "head": "22d00aa13cf554896a0441578102010bf077d776",
+  "working_tree_dirty": true,
+  "results": [
+    {
+      "mode": "release-mode0",
+      "registered": 58,
+      "passed": 57,
+      "skipped": 0,
+      "disabled": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "EBRManagerTest.SingleThreadBasicFlow",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.MultiThreadStress_ThreadHeap_Integration",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.CustomDeleterWithStandardHeap",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.IntegerInitialization",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.ComplexObjectInitialization",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.VersionChaining",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.AllocationSanity",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.BasicStoreAndCommit",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadYourOwnWrites",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadOnlyCommitAfterHeadChanges",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry",
+          "result": "Passed"
+        },
+        {
+          "name": "OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum",
+          "result": "Passed"
+        },
+        {
+          "name": "OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue",
+          "result": "Passed"
+        },
+        {
+          "name": "OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.TerminalRetryGuardRetainsAllAttemptsAndCauses",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.MixedAbortsAndSuccessAreCountedOnce",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.ExceptionsKeepTheirKindAndPreviousRetries",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.MergeIncludesFailedLogicalTransactionsAndHistogramBounds",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.BackoffRunsOnlyBetweenAttemptsAndResetsPerLogicalOperation",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.JitterDelayIsBoundedEvenForHugeRetryCounts",
+          "result": "Passed"
+        },
+        {
+          "name": "WwSTMTreeTest.ConcurrentPathIncrement",
+          "result": "Passed"
+        },
+        {
+          "name": "WwSTMTreeTest.HighContentionProgressAndConsistency",
+          "result": "***Not Run (Disabled)"
+        },
+        {
+          "name": "TxContextTest.TwoThreadsConcurrentIncrement",
+          "result": "Passed"
+        },
+        {
+          "name": "TxContextTest.RepeatReadVersionChangeAborts",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.Construction",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.StableNodeReadSnapshot",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ReadYourOwnWrites",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.IsolationSnapshotRead",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.WriteWriteConflict",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ReentrantWriteReusesOneLocatorAndDraft",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortAndRollback",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortedRecordReadSnapshotUsesOldNode",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ActiveRecordReadSnapshotUsesOldNode",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortMultiVariableKeepsOldLogicalView",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableAtomicityStress",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.HeadIdentityChangeRetriesSnapshot",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.HelpingFlattensAbortedAndCommittedLocators",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.StealAbortedLockViaNodeGeneration",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiresAfterHelper",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiredExactlyOnce",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr",
+          "result": "Passed"
+        },
+        {
+          "name": "TxLinkedListTest.SingleThreadAppend",
+          "result": "Passed"
+        },
+        {
+          "name": "TxLinkedListTest.TwoThreadsConcurrentAppend",
+          "result": "Passed"
+        }
+      ],
+      "log_sha256": "6edddcd91be208f832ca2584473294bf148c9c514e35607ece32db6234bbf707"
+    },
+    {
+      "mode": "debug-verify",
+      "registered": 58,
+      "passed": 50,
+      "skipped": 7,
+      "disabled": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "EBRManagerTest.SingleThreadBasicFlow",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.MultiThreadStress_ThreadHeap_Integration",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.CustomDeleterWithStandardHeap",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.IntegerInitialization",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.ComplexObjectInitialization",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.VersionChaining",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.AllocationSanity",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.BasicStoreAndCommit",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadYourOwnWrites",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadOnlyCommitAfterHeadChanges",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry",
+          "result": "Passed"
+        },
+        {
+          "name": "OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum",
+          "result": "Passed"
+        },
+        {
+          "name": "OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue",
+          "result": "Passed"
+        },
+        {
+          "name": "OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.TerminalRetryGuardRetainsAllAttemptsAndCauses",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.MixedAbortsAndSuccessAreCountedOnce",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.ExceptionsKeepTheirKindAndPreviousRetries",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.MergeIncludesFailedLogicalTransactionsAndHistogramBounds",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.BackoffRunsOnlyBetweenAttemptsAndResetsPerLogicalOperation",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.JitterDelayIsBoundedEvenForHugeRetryCounts",
+          "result": "Passed"
+        },
+        {
+          "name": "WwSTMTreeTest.ConcurrentPathIncrement",
+          "result": "Passed"
+        },
+        {
+          "name": "WwSTMTreeTest.HighContentionProgressAndConsistency",
+          "result": "***Not Run (Disabled)"
+        },
+        {
+          "name": "TxContextTest.TwoThreadsConcurrentIncrement",
+          "result": "Passed"
+        },
+        {
+          "name": "TxContextTest.RepeatReadVersionChangeAborts",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.Construction",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.StableNodeReadSnapshot",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ReadYourOwnWrites",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.IsolationSnapshotRead",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.WriteWriteConflict",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ReentrantWriteReusesOneLocatorAndDraft",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortAndRollback",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortedRecordReadSnapshotUsesOldNode",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ActiveRecordReadSnapshotUsesOldNode",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortMultiVariableKeepsOldLogicalView",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableAtomicityStress",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.HeadIdentityChangeRetriesSnapshot",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TMVarTest.HelpingFlattensAbortedAndCommittedLocators",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.StealAbortedLockViaNodeGeneration",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiresAfterHelper",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiredExactlyOnce",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr",
+          "result": "***Skipped"
+        },
+        {
+          "name": "TxLinkedListTest.SingleThreadAppend",
+          "result": "Passed"
+        },
+        {
+          "name": "TxLinkedListTest.TwoThreadsConcurrentAppend",
+          "result": "Passed"
+        }
+      ],
+      "log_sha256": "19257eac0c903656178e997aa6e9f121b37e1312e06041631bd9e14af75a0627"
+    },
+    {
+      "mode": "debug-asan-ubsan-mode0",
+      "registered": 58,
+      "passed": 57,
+      "skipped": 0,
+      "disabled": 1,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "EBRManagerTest.SingleThreadBasicFlow",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.MultiThreadStress_ThreadHeap_Integration",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.CustomDeleterWithStandardHeap",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireUsesGlobalEpochWhenOwnerSlotIsBehind",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtLaggingSlotUsesCurrentGlobalEpoch",
+          "result": "Passed"
+        },
+        {
+          "name": "EBRManagerTest.RetireAtCurrentGlobalEpochUsesNormalGracePeriod",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.IntegerInitialization",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.ComplexObjectInitialization",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.VersionChaining",
+          "result": "Passed"
+        },
+        {
+          "name": "OccDataStructureTest.AllocationSanity",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.BasicStoreAndCommit",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadYourOwnWrites",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadsRetainedVersionAfterAnotherCommit",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ReadOnlyCommitAfterHeadChanges",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.ChangedReadAbortsWithoutPublishingAndCanRetry",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.LockedReadReportsConflictAndReleasesOwnLocks",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.OwnWriteLockDoesNotCauseReadConflict",
+          "result": "Passed"
+        },
+        {
+          "name": "OccTransactionTest.PrunedHistoryReportsSnapshotUnavailableAndCanRetry",
+          "result": "Passed"
+        },
+        {
+          "name": "OccConcurrencyTest.BoundedConcurrentIncrementsPreserveCommittedSum",
+          "result": "Passed"
+        },
+        {
+          "name": "OccAtomicApiTest.RetriesChangedReadAndReturnsOnlySuccessfulAttemptValue",
+          "result": "Passed"
+        },
+        {
+          "name": "OccAtomicApiTest.VoidCallbackAndExceptionLeaveNextTransactionUsable",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.TerminalRetryGuardRetainsAllAttemptsAndCauses",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.MixedAbortsAndSuccessAreCountedOnce",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.ExceptionsKeepTheirKindAndPreviousRetries",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.MergeIncludesFailedLogicalTransactionsAndHistogramBounds",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.BackoffRunsOnlyBetweenAttemptsAndResetsPerLogicalOperation",
+          "result": "Passed"
+        },
+        {
+          "name": "BenchmarkDiagnosticsTest.JitterDelayIsBoundedEvenForHugeRetryCounts",
+          "result": "Passed"
+        },
+        {
+          "name": "WwSTMTreeTest.ConcurrentPathIncrement",
+          "result": "Passed"
+        },
+        {
+          "name": "WwSTMTreeTest.HighContentionProgressAndConsistency",
+          "result": "***Not Run (Disabled)"
+        },
+        {
+          "name": "TxContextTest.TwoThreadsConcurrentIncrement",
+          "result": "Passed"
+        },
+        {
+          "name": "TxContextTest.RepeatReadVersionChangeAborts",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.Construction",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.StableNodeReadSnapshot",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ReadYourOwnWrites",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.IsolationSnapshotRead",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.WriteWriteConflict",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ReentrantWriteReusesOneLocatorAndDraft",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PrepareFreezesDraftAndPublishesFinalTimestamp",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortAndRollback",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortedRecordReadSnapshotUsesOldNode",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.ActiveRecordReadSnapshotUsesOldNode",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.AbortMultiVariableKeepsOldLogicalView",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.MultiVariableAtomicityStress",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PostCommitHelperRaceKeepsCommitSuccessful",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.HeadIdentityChangeRetriesSnapshot",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.HelpingFlattensAbortedAndCommittedLocators",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.StealAbortedLockViaNodeGeneration",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiresAfterHelper",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.PublishedWriteRecordRetiredExactlyOnce",
+          "result": "Passed"
+        },
+        {
+          "name": "TMVarTest.OwnerCleanupAfterHelperUsesTokenOnly",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.OverAlignedAllocationUsesCacheLineAlignment",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.ReclamationWaitsForReaderHoldingPublishedRecord",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.HelperCanReadTerminalOwnerAfterOwnerCleanup",
+          "result": "Passed"
+        },
+        {
+          "name": "TxDescriptorTest.TransactionDescriptorChurnReclaimsThroughEbr",
+          "result": "Passed"
+        },
+        {
+          "name": "TxLinkedListTest.SingleThreadAppend",
+          "result": "Passed"
+        },
+        {
+          "name": "TxLinkedListTest.TwoThreadsConcurrentAppend",
+          "result": "Passed"
+        }
+      ],
+      "log_sha256": "565261670e49efba4d76ae4682784e2c78b9daec5b501b6a000126094a15473e"
+    }
+  ],
+  "python_unittest": {
+    "test_methods": 9,
+    "passed": 9,
+    "skipped": 0,
+    "binary_integration_backends": [
+      "mutex",
+      "shared_mutex",
+      "occ",
+      "ww"
+    ],
+    "log_sha256": "b08314dece610df1fcd8c839e0e1fce6715c8fc91a1f6ad962c4afffad1730ab"
+  },
+  "asan_options": "detect_leaks=0:halt_on_error=1",
+  "ubsan_options": "halt_on_error=1:print_stacktrace=1",
+  "ctest_timeout_s": 60,
+  "performance_report": "../performance/occ-retry-diagnostics.md",
+  "notes": [
+    "Local validation only; remote CI has not been observed.",
+    "No TSan or LSan pass is claimed.",
+    "Benchmark report preserves all 108 process runs including 6 retry_limit failures."
+  ]
+}

@@ -11,8 +11,9 @@ add_executable(run_tests
 
     EBRManager/test_EBRManager.cpp
 
-    # OccSTM/test_TMVar.cpp
-    # OccSTM/test_Transaction.cpp
+    OccSTM/test_TMVar.cpp
+    OccSTM/test_Transaction.cpp
+    benchmarks/test_Diagnostics.cpp
     # OccSTM/test_STM.cpp
     # OccSTM/test_STM_Tree.cpp
     
@@ -37,6 +38,7 @@ target_compile_definitions(run_tests PRIVATE STM_WW_TEST_HOOKS=1)
 # 3. 确保包含目录可见
 target_include_directories(run_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/benchmarks
 )
 
 # 4. 启用 GoogleTest 的自动测试发现

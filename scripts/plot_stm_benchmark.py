@@ -285,6 +285,9 @@ def load_inputs(result_dir: Path) -> Tuple[List[Dict[str, str]], List[Dict[str, 
 
     raw_rows = read_csv(raw_path)
     summary_rows = read_csv(summary_path)
+    policies = {row.get("backoff", "none") for row in raw_rows + summary_rows}
+    if len(policies) > 1:
+        raise SystemExit("Mixed retry policies: split the input by backoff before using this plotter")
     raw_fields = set(raw_rows[0]) if raw_rows else set()
     summary_fields = set(summary_rows[0]) if summary_rows else set()
     missing_raw = sorted(RAW_REQUIRED - raw_fields)

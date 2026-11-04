@@ -1,11 +1,44 @@
 # 测试范围与验证记录
 
-本页对应 2026-11-04 文档收尾所使用的源码基线
-`da9634b47bd1e37e0700725e4aab845393d5213b`。本轮不修改算法、测试代码、
-启用列表或 CI 配置。当前入口是 [tests/CMakeLists.txt](../tests/CMakeLists.txt)
-和 [CI 配置](../.github/workflows/ci.yml)。
+当前分支 `codex/perf-diagnostics` 在 `v0.1.0-prototype` 基线上新增了 OccSTM
+失败分类、重试统计与有界随机退避。测试入口是
+[tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。
 
-## 本轮验证记录
+## 诊断与退避分支的新增覆盖
+
+本分支新增登记 21 个 C++ 用例，总计 58 个，其中原有 1 个高冲突 WwSTM 用例
+仍保持 disabled。本地结果为：
+
+| 构建 | 通过 | 跳过 | 禁用 | 失败 |
+| --- | ---: | ---: | ---: | ---: |
+| Release / mode=0 | 57 | 0 | 1 | 0 |
+| Debug / VERIFY | 50 | 7 | 1 | 0 |
+| Debug / ASan+UBSan / mode=0 | 57 | 0 | 1 | 0 |
+
+完整本地结果见[本分支验证记录](validation/2026-11-04-perf-diagnostics.json)。
+
+| 新纳入的测试源文件 | 用例数 | 主要覆盖 |
+| --- | ---: | --- |
+| OccSTM/test_TMVar.cpp | 4 | 初始化、复杂值、版本链和分配接口 |
+| OccSTM/test_Transaction.cpp | 11 | 读自己的写、保留的历史读取、三类失败、失败提交不发布且释放锁、重新 begin、受限并发累加、atomically 返回值和异常 |
+| benchmarks/test_Diagnostics.cpp | 6 | 失败尝试计数、异常分类、直方图汇总、退避触发边界与随机延迟上限 |
+
+另有 9 个 Python unittest 方法，覆盖 CSV 异常文本保留、非零退出、信号和超时分类、
+策略分组、旧归档汇总不变，以及四种后端的短时 CSV/JSON/线程计数对账和报告写入失败。
+`STM_BENCHMARK_BIN` 未设置时，其中 2 个二进制集成检查会跳过；Release CI 已配置
+该环境变量并构建 benchmark。没有把本地结果当成远端 CI 通过记录。
+
+~~~bash
+STM_BENCHMARK_BIN=/tmp/castm-package-release/benchmarks/stm_benchmark \
+  python3 -m unittest discover -s tests/scripts -v
+~~~
+
+新启用的 OccSTM 测试不代表全部历史 OccSTM 测试已启用。`test_STM.cpp`、
+`test_STM_Tree.cpp` 仍在默认构建之外。测试限定在已断言的行为，不将单变量保留
+历史的成功读取表述为完整快照隔离证明。下文保存的是原型标签发布前的历史验证，
+其中“本轮”和用例计数均指当时的文档收尾。
+
+## v0.1.0-prototype 发布前的验证记录
 
 在独立的干净构建目录中验证，环境为 GCC 11.4.0、CMake 3.22.1、
 Python 3.10.12、WSL2 / Linux 6.18.40.1-microsoft-standard-WSL2。
@@ -26,7 +59,7 @@ CTest 在 VERIFY 下可能输出“0 tests failed out of 36”，其中包含 7 
 不能据此写成“36 个实际执行通过”。禁用用例不进入本轮通过数。
 此处是本地运行结果，CI 配置列在下文；没有将远端 CI 状态推断为已通过。
 
-## 默认纳入构建的源文件
+## 原型标签默认纳入构建的源文件
 
 | 测试源文件 | 登记数 | mode=0 通过 | VERIFY 通过 | VERIFY 跳过 | 禁用 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -69,7 +102,7 @@ EBRManager 独立用例仍会在 VERIFY 构建中运行。
 本轮保持原状，未单独启用执行；当前是否稳定通过仍需另行评估。
 已有 benchmark 的高冲突完成记录不等于该用例已通过。
 
-## 未纳入默认构建的历史源文件
+## 原型标签未纳入默认构建的历史源文件
 
 | 范围 | 文件与状态 |
 | --- | --- |

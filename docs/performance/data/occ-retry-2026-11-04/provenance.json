@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "branch": "codex/perf-diagnostics",
+  "base_tag": "v0.1.0-prototype",
+  "head_at_run": "22d00aa13cf554896a0441578102010bf077d776",
+  "working_tree_dirty": true,
+  "binary_sha256": "7ee761db8b22a9dd131de7e57bde417d5cdb2726874dd49eeaa569fa92c619bb",
+  "source_manifest_location": "metadata.txt:source_manifest",
+  "build_command": "cmake -S . -B /tmp/castm-perf-diagnostics -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-DSTM_WW_VERIFY_LOGIC_MODE=0",
+  "build_target": "run_tests stm_benchmark -j2",
+  "allocator": "native (OccSTM VersionNode uses TierAlloc)",
+  "benchmark_native": false,
+  "test_hooks": false,
+  "run_command": "python3 scripts/run_retry_ablation.py --binary /tmp/castm-perf-diagnostics/benchmarks/stm_benchmark --output-dir /tmp/castm-retry-ablation --threads 1,20 --repetitions 3 --warmup-ms 300 --measure-ms 1500 --max-attempts 1000000 --timeout-seconds 40",
+  "parameters": {
+    "backends": "occ",
+    "backoff": "none",
+    "high_key_count": 16,
+    "latency_sampling": "one logical transaction per 256 committed transactions",
+    "low_key_count": 65536,
+    "max_attempts": 1000000,
+    "measure_ms": 1500,
+    "ops_per_tx": 8,
+    "repetitions": 3,
+    "seed": 3394748143,
+    "threads": [
+      1,
+      20
+    ],
+    "warmup_ms": 300,
+    "workloads": [
+      [
+        90,
+        "low"
+      ],
+      [
+        90,
+        "high"
+      ],
+      [
+        50,
+        "low"
+      ],
+      [
+        50,
+        "high"
+      ],
+      [
+        10,
+        "low"
+      ],
+      [
+        10,
+        "high"
+      ]
+    ]
+  },
+  "policies": [
+    "none",
+    "yield",
+    "jitter"
+  ],
+  "rows": 108,
+  "valid_runs": 102,
+  "invalid_reasons": {
+    "retry_limit": 6
+  },
+  "checksums_match": 108,
+  "notes": [
+    "Each process uses one binary and one policy; policies rotate within each workload/repetition.",
+    "HEAD is the prototype base, not the identity of the modified source. Binary and per-file hashes identify the measured working tree.",
+    "Diagnostics archive contains the original JSON objects for all 108 runs, keyed by raw.csv diagnostics_file.",
+    "No CPU affinity, frequency pinning, profiler, sanitizer or concurrent build was used during the performance matrix.",
+    "This matrix measures the manual benchmark retry loop, not end-to-end STM::atomically API overhead."
+  ],
+  "sha256": {
+    "diagnostics.jsonl.gz": "7d4e9f8f0cf15d118eb34ff0248b3b4914221a5a7268d3e2a6a1814c9a8b0297",
+    "metadata.txt": "9398e34c8a145c15d4c389e121fcb9e56d80b3784e86550cac1574dff9041d0a",
+    "raw.csv": "6f79d57fe785e4e599f1f6d612bf8c24f7449fcde3152fdedd155f27d7b872c5",
+    "summary.csv": "97de2f6b6e866a85275bfa3178112acf7ffdb770c9ab95df1b1df52091951879"
+  }
+}

@@ -35,14 +35,15 @@ def _mean_stddev(values: Sequence[float]) -> Tuple[float, float]:
 def summarize_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str, str]]:
     grouped = defaultdict(list)
     all_rows = list(rows)
+    group_fields = GROUP_FIELDS + (("backoff",) if any("backoff" in row for row in all_rows) else ())
     for row in all_rows:
-        grouped[tuple(row.get(field, "") for field in GROUP_FIELDS)].append(row)
+        grouped[tuple(row.get(field, "none" if field == "backoff" else "") for field in group_fields)].append(row)
 
     output: List[Dict[str, str]] = []
     for key in sorted(grouped):
         group = grouped[key]
         valid_rows = [row for row in group if _is_valid(row)]
-        result = {field: value for field, value in zip(GROUP_FIELDS, key)}
+        result = {field: value for field, value in zip(group_fields, key)}
         result["valid_runs"] = str(len(valid_rows))
         result["total_runs"] = str(len(group))
 
@@ -65,7 +66,7 @@ def summarize_file(raw_path: Path, summary_path: Path) -> List[Dict[str, str]]:
         rows = list(csv.DictReader(stream))
 
     summary = summarize_rows(rows)
-    fieldnames = list(GROUP_FIELDS) + ["valid_runs", "total_runs"]
+    fieldnames = list(GROUP_FIELDS) + (["backoff"] if any("backoff" in row for row in rows) else []) + ["valid_runs", "total_runs"]
     for _, mean_name, stddev_name in METRICS:
         fieldnames.extend((mean_name, stddev_name))
 

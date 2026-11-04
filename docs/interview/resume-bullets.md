@@ -18,6 +18,12 @@
 > 关键对象切换 TierAlloc 后，5 次独立运行的平均吞吐较系统分配器提高约 30.3%；
 > 同时记录高冲突配置下的性能退化。
 
+本分支新增的性能诊断经历也可以作为替换项，数据见[退避对照报告](../performance/occ-retry-diagnostics.md)：
+
+> 补齐 OccSTM 失败分类与逐线程重试统计，定位热点读锁冲突引发的重试风暴，
+> 实现有界随机退避并完成 108 次策略对照；在本机 20T、50R/50W、16 keys 场景中，
+> 有效运行由 0/3 提升为 3/3，同时记录单线程低冲突的吞吐开销。
+
 ## English
 
 - Implemented CaSTM, a C++17 software transactional memory prototype with OccSTM optimistic validation/retry and WwSTM active conflict management over versioned shared variables.
@@ -33,8 +39,8 @@
 
 ## 面试时的限定说明
 
-- benchmark 是历史的单机 WSL2、Intel i5-14600KF、20 logical CPUs、GCC 11.4、Release -O3 结果；短时运行检查不作为新的性能结论。
+- 历史矩阵和新的退避对照均来自单机 WSL2、Intel i5-14600KF、GCC 11.4、Release -O3，但参数与源码不同，不能混合成同一次实验。
 - WwSTM 108/108、OccSTM 97/108 是主矩阵中的有效运行次数。无效行的原始错误只有 exit code 1，重试耗尽归因及其诊断限制见报告。
 - 锁基线通常更快；现有数据不能证明普遍加速、线性扩展或无饥饿。
-- 当前包含互斥锁，验证只覆盖明确列出的测试；mode=0/ASan+UBSan 各 36 个通过，VERIFY 29 个通过、7 个跳过，另有 1 个禁用用例。
+- 当前包含互斥锁，验证只覆盖明确列出的测试；本分支 mode=0/ASan+UBSan 各 57 个通过，VERIFY 50 个通过、7 个跳过，另有 1 个禁用用例。
 - TSan 本轮未验证，ASan 关闭泄漏检测；TierAlloc 仍有线程退出保留 chunk 的策略，不能写成完整无泄漏或生产就绪。

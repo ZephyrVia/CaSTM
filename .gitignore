@@ -84,3 +84,6 @@ Desktop.ini
 # Crash dumps
 *.dmp
 core.*
+# Python benchmark/test caches
+__pycache__/
+*.pyc
