@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "branch": "codex/occ-reclamation-audit",
+  "head_at_run": "19d43f6fb84753daea43f7d9bac795d3f395eeb3",
+  "working_tree_dirty": false,
+  "binary_sha256": "a792a0d7045b6a09023de1cef91d52661b0c7ef0962787edf8d884670cf42c8e",
+  "source_manifest_location": "metadata.txt:source_manifest",
+  "source_manifest_verified_against_commit": {
+    "commit": "19d43f6fb84753daea43f7d9bac795d3f395eeb3",
+    "files": 95
+  },
+  "ci": {
+    "schema_version": 1,
+    "recorded_date": "2026-11-04",
+    "timezone": "Asia/Shanghai",
+    "branch": "codex/occ-reclamation-audit",
+    "commit": "19d43f6fb84753daea43f7d9bac795d3f395eeb3",
+    "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Build and test (WwSTM mode=0)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425/job/126384210088"
+      },
+      {
+        "name": "Build and test (VERIFY)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425/job/126384210120"
+      },
+      {
+        "name": "ASan and UBSan",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425/job/126384210040"
+      },
+      {
+        "name": "OccSTM history and reclamation (TSan)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425/job/126384209875"
+      }
+    ],
+    "verification_method": "Public GitHub Actions run page; exact commit matched in branch workflow run listing and all four job cards concluded successfully."
+  },
+  "build_command": "cmake -S . -B /tmp/castm-occ-ebr-bench -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-DSTM_WW_VERIFY_LOGIC_MODE=0",
+  "build_target": "stm_benchmark -j2",
+  "allocator": "native (OccSTM VersionNode uses TierAlloc)",
+  "benchmark_native": false,
+  "test_hooks": false,
+  "run_command": "python3 scripts/run_retry_ablation.py --binary /tmp/castm-occ-ebr-bench/benchmarks/stm_benchmark --output-dir /tmp/castm-occ-ebr-ablation --threads 1,20 --policies none,yield,jitter --repetitions 3 --warmup-ms 300 --measure-ms 1500 --max-attempts 1000000 --timeout-seconds 40",
+  "parameters": {
+    "backends": "occ",
+    "backoff": "none",
+    "high_key_count": 16,
+    "latency_sampling": "one logical transaction per 256 committed transactions",
+    "low_key_count": 65536,
+    "max_attempts": 1000000,
+    "measure_ms": 1500,
+    "ops_per_tx": 8,
+    "repetitions": 3,
+    "seed": 3394748143,
+    "threads": [
+      1,
+      20
+    ],
+    "warmup_ms": 300,
+    "workloads": [
+      [
+        90,
+        "low"
+      ],
+      [
+        90,
+        "high"
+      ],
+      [
+        50,
+        "low"
+      ],
+      [
+        50,
+        "high"
+      ],
+      [
+        10,
+        "low"
+      ],
+      [
+        10,
+        "high"
+      ]
+    ]
+  },
+  "policies": [
+    "none",
+    "yield",
+    "jitter"
+  ],
+  "rows": 108,
+  "valid_runs": 102,
+  "valid_by_policy": {
+    "none": 30,
+    "yield": 36,
+    "jitter": 36
+  },
+  "invalid_reasons": {
+    "retry_limit": 6
+  },
+  "checksums_match": 108,
+  "runner_exit_code": 1,
+  "notes": [
+    "Performance runs began after all four CI jobs succeeded for the exact measured commit.",
+    "The source tree was clean at build and run time; all recorded source-file hashes were checked against the measured commit after the matrix.",
+    "Each process uses one binary and one policy; policies rotate within each workload/repetition.",
+    "Diagnostics archive contains the original JSON objects for all runs, keyed by raw.csv diagnostics_file.",
+    "No CPU affinity, frequency pinning, profiler, sanitizer or concurrent local build/test was used during the performance matrix.",
+    "This matrix measures the manual benchmark retry loop, not end-to-end STM::atomically API overhead.",
+    "Historical pre-fix results were collected separately and include known EBR bucket-reuse and slot-link races; differences are descriptive and do not isolate the cost of the fix."
+  ],
+  "sha256": {
+    "raw.csv": "5d37ecef035c8aba3d9cbb1e248d8ad8b45e1de7443b1ad0e60536afcad48152",
+    "summary.csv": "32402a7ca7f1911d94cc5565e0ee2979fa161f0c2e4eddb87105286d7453a58d",
+    "metadata.txt": "8187cb3b6777cc77ade4db3f554ddd4f242aaf5997f5c658ba766a9714932a95",
+    "diagnostics.jsonl.gz": "f6d27d511b9427fb9a48728a94016fe19855d9108cc751814486c36a23b3e409",
+    "runner.txt": "a100aeda9f0915d0e8f9dbf0e1c26cf19649a0e572ea1ce130342a7eee0db640"
+  }
+}

@@ -248,6 +248,11 @@ the pre-fix experiment. The [post-fix report](../docs/performance/occ-postfix-pe
 reruns the same 108-process matrix on clean commit `9bccd33` after all four CI
 jobs passed. Its 103 valid runs and five retry-limit failures are archived
 separately; historical batches do not isolate the cost of the atomic-edge fix.
+That intermediate version still contains the subsequently diagnosed EBR races.
+The [final EBR-fix report](../docs/performance/occ-ebr-performance.md) measures
+clean commit `19d43f6` after all four CI jobs passed again: 102/108 valid runs,
+with six retry-limit failures under immediate retry and 36/36 valid runs each
+for yield and jitter. Use this report for current-version performance.
 
 Runner regression checks, including short binary counter-reconciliation tests:
 

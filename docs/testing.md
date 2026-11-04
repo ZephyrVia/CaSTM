@@ -13,6 +13,11 @@
 TSan 范围为 system allocator 下 20 个 OccSTM 用例与 2 个 EBR 用例，CI 重复 50 轮。
 本地普通调度和双核调度各重复 100 轮，共 4,400 次执行通过，独立日志及哈希见
 [验证记录](validation/slot-reuse-2026-11-04/result.json)。各阶段的失败与通过均分别保留。
+最终源码 `19d43f6fb84753daea43f7d9bac795d3f395eeb3` 的
+[CI #11](https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425) 四项 job 均成功，
+见 [CI 核验记录](validation/slot-reuse-2026-11-04/ci.json)。四项通过后执行的 108 次
+性能复测有 102 次有效、6 次 retry_limit，108 次 checksum 均匹配，见
+[最终性能报告](performance/occ-ebr-performance.md)。
 
 ## EBR 桶复用修复的追加验证
 
@@ -21,7 +26,7 @@ TSan 失败，其他三项成功。本地对原 `9bccd33` 二进制增加重复�
 报告读者访问与版本节点释放的数据竞争。完整证据与修复见
 [BUG-10](../BUG-10-EBR纪元推进与退休桶复用竞争.md)。这说明下文历史 10 轮通过有其覆盖限制。
 
-最新修复新增 EBR 并发桶复用回归，总计登记 64 个 C++ 用例：Release 和 ASan/UBSan
+桶复用修复阶段新增 EBR 并发回归，当时总计登记 64 个 C++ 用例：Release 和 ASan/UBSan
 各 63 个通过；VERIFY 为 56 个通过、7 个跳过；均保留原有 1 个禁用用例。Python
 9 个方法通过。TSan 对 system allocator 下的 20 个 OccSTM 用例及新增 EBR 用例
 重复 100 轮，2,100 次执行通过；CI 使用同一过滤范围重复 50 轮（1,050 次）。

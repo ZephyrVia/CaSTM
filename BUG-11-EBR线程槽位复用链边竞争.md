@@ -50,5 +50,8 @@ CI 使用同一过滤范围，重复 50 轮（1,100 次），保留失败即退�
 TSan 验证范围不包含 TierAlloc 独立接口或全仓库，也不是长期线程 churn/RSS 结论。
 
 原始失败、普通调度与双核修复日志，以及源码和日志哈希见
-[验证记录](docs/validation/slot-reuse-2026-11-04/result.json)。此前性能归档仍属于
-未包含 BUG-10/11 修复的中间版本，需要等新提交四项 CI 通过后再复测。
+[验证记录](docs/validation/slot-reuse-2026-11-04/result.json)。源码提交
+`19d43f6fb84753daea43f7d9bac795d3f395eeb3` 的
+[CI #11](https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425) 四项 job 全部通过，
+见 [CI 核验记录](docs/validation/slot-reuse-2026-11-04/ci.json)。之后在该干净提交上
+重新运行 108 次策略对照，见[最终性能报告](docs/performance/occ-ebr-performance.md)。

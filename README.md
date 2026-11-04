@@ -15,7 +15,7 @@ CaSTM 将进程内共享变量的读写组织成事务，实现了 OccSTM 和 Ww
 | WwSTM 当前协议与实现位置 | [设计说明](OSTM_WW.md) |
 | 构建选项与代码阅读顺序 | [构建指南](OSTM_WW%20系统构建指南.md) |
 | 启用、跳过、禁用及未纳入构建的测试 | [测试范围与验证记录](docs/testing.md) |
-| 性能结论、限制及可核验 CSV | [修复后性能复测](docs/performance/occ-postfix-performance.md)、[历史性能报告](docs/performance/README.md)、[OccSTM 诊断与退避](docs/performance/occ-retry-diagnostics.md) |
+| 性能结论、限制及可核验 CSV | [最终修复后的性能复测](docs/performance/occ-ebr-performance.md)、[历史性能报告](docs/performance/README.md)、[OccSTM 诊断与退避](docs/performance/occ-retry-diagnostics.md) |
 | benchmark 构建、运行和汇总 | [实验使用说明](benchmarks/README.md) |
 | 并发问题的取证与修复过程 | [BUG 索引](BUG-00-索引.md) |
 | 项目展示 | [简历描述](docs/interview/resume-bullets.md)、[面试讲稿](docs/interview/project-story.md) |
@@ -90,18 +90,14 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 - Python runner 的 9 个 unittest 方法通过，包含四后端短时计数对账。
 - 部分历史 OccSTM/TierAlloc/WwSTM 测试仍未纳入默认构建。命令及范围见[测试记录](docs/testing.md)。
 
-剪枝竞争的复现、原子链边修复和延迟回收证据见
-[BUG-09](BUG-09-OccSTM并发剪枝链边数据竞争.md)。审计修复提交 `9bccd33` 的
-[四项远端 CI](https://github.com/ZephyrVia/CaSTM/actions/runs/41768629427) 已全部通过，
-包括新增的 OccSTM TSan job；[核验记录](docs/validation/occ-reclamation-2026-11-04/ci.json)
-保存提交和各 job 链接。
-
-随后文档提交 `89578c1` 的 [CI #9](https://github.com/ZephyrVia/CaSTM/actions/runs/41769838034)
-出现 TSan 失败，本地重复运行也发现节点读取与释放竞争。最新 EBR 修复将纪元推进
-和退休桶摘取同步，已通过上述本地验证；失败、修复及验证范围见
-[BUG-10](BUG-10-EBR纪元推进与退休桶复用竞争.md)。先前通过记录保留为对应提交的历史证据。
-随后双核调度下又复现槽位复用链边竞争，修复与追加验证见
-[BUG-11](BUG-11-EBR线程槽位复用链边竞争.md)。
+最终源码提交 `19d43f6` 的
+[四项远端 CI](https://github.com/ZephyrVia/CaSTM/actions/runs/41772192425) 已全部通过，
+其中 TSan 覆盖上述 22 个用例、重复 50 轮；
+[核验记录](docs/validation/slot-reuse-2026-11-04/ci.json)保存精确提交和各 job 链接。
+此前两次 TSan CI 失败、本地复现与修复证据分别保留在
+[原子链边修复](BUG-09-OccSTM并发剪枝链边数据竞争.md)、
+[退休桶复用修复](BUG-10-EBR纪元推进与退休桶复用竞争.md)和
+[槽位复用修复](BUG-11-EBR线程槽位复用链边竞争.md)中。
 
 VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
 mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
@@ -109,15 +105,16 @@ mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部�
 
 ## 性能结果
 
-以下 `9bccd33` 的性能属于仍含 BUG-10 的中间版本，不能代表最新 EBR 修复。
-该提交在当时四项 CI 通过后完成 108 次 OccSTM 策略对照：立即重试
-31/36 次有效，`yield` 和随机退避各 36/36 次有效；5 次失败均为 retry_limit，
+最终源码 `19d43f6` 在四项 CI 通过后完成 108 次 OccSTM 策略对照：立即重试
+30/36 次有效，`yield` 和随机退避各 36/36 次有效；6 次失败均为 retry_limit，
 108 次最终 checksum 全部匹配。20T、50R/50W、16 keys 的立即重试 0/3 次有效，
-随机退避 3/3 次有效，平均 **930,577 ± 21,732 TPS**，p99 均值 **446.65 μs**。
+随机退避 3/3 次有效，平均 **906,055 ± 21,193 TPS**，p99 均值 **407.48 μs**。
 
-本轮 20 线程低冲突的随机退避吞吐较立即重试下降 0.42%～3.89%；与修复前独立
-批次相比，部分配置也有下降，不能声称修复没有性能开销。完整配置、历史差异、
-统计边界和原始数据见[修复后性能复测](docs/performance/occ-postfix-performance.md)。
+本轮 20 线程低冲突的随机退避吞吐较立即重试变化为 -3.18%～+0.45%，不把热点
+收益推广到所有负载。完整参数、统计边界及原始数据见
+[最终修复后的性能报告](docs/performance/occ-ebr-performance.md)。
+`9bccd33` 的[中间版本数据](docs/performance/occ-postfix-performance.md)仍完整保留，
+不将含已知竞争的旧实现作为语义等价的安全基线来计算 EBR 修复开销。
 benchmark 默认 `--backoff none`，可显式选择 `jitter`；`STM::atomically` 默认使用
 同一随机退避策略。以下历史矩阵与本轮分开保存。
 

@@ -87,3 +87,5 @@ timeout 180s setarch x86_64 -R env TSAN_OPTIONS=halt_on_error=1 \
 本轮没有证明完整 EBR 内存模型、无饥饿或任意嵌套 guard 的行为。长时 RSS、慢读者
 和线程 churn 仍需单独测试。`9bccd33` 的性能归档保留为含此已知问题的中间版本，
 不能把其 93.1 万 TPS 当作本次 EBR 修复的性能结果。
+最终包含两处 EBR 修复的 `19d43f6` 已通过四项远端 CI，并完成新的 108 次对照；
+结果见 [最终性能报告](docs/performance/occ-ebr-performance.md)。
