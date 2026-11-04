@@ -33,7 +33,8 @@ Application
 ~~~
 
 - **OccSTM**：基于时间戳与版本链读取数据，写事务在提交时验证读集并使用条带锁，
-  冲突时重试。`STM::atomically` 当前封装的是 OccSTM。
+  冲突时重试。历史链边使用原子指针访问，节点通过 EBR 延迟回收。
+  `STM::atomically` 当前封装的是 OccSTM。
 - **WwSTM**：使用 Wound-Wait 风格的主动中止与重试，通过 single-head Locator
   统一共享变量的状态入口。应用使用 `TxContext`，与 OccSTM 的接口尚未统一。
 - **EBR**：保护并发 reader、owner、helper 使用的退休对象，等待 grace period
@@ -79,15 +80,20 @@ GarbageNode 元数据独立使用系统堆，payload 由对应 deleter 释放。
 
 ## 验证范围
 
-2026-11-04 在 `codex/perf-diagnostics` 分支上验证，原型标签的历史记录单独保留。
+2026-11-04 在 `codex/occ-reclamation-audit` 分支上本地验证；各阶段记录分别保留。
 
-- Release / mode=0：57 个测试通过，1 个高冲突测试保持 disabled。
-- Debug / VERIFY：50 个通过，7 个按设计跳过，1 个 disabled。
-- ASan + UBSan / mode=0：57 个通过，1 个 disabled；命令见[验证记录](docs/testing.md)。
-- 新启用 OccSTM TMVar/Transaction 测试，并覆盖失败分类、重试计数与退避边界。
-  部分历史 OccSTM/TierAlloc/WwSTM 测试仍不在默认构建中。
-- Python runner 的 9 个 unittest 方法通过，包含四后端的短时计数对账。
-- TSan 本轮未验证；ASan 使用 `detect_leaks=0`，没有完整的 LSan 通过结论。
+- Release / mode=0：62 个测试通过，1 个高冲突测试保持 disabled。
+- Debug / VERIFY：55 个通过，7 个按设计跳过，1 个 disabled。
+- ASan + UBSan / mode=0：62 个通过，1 个 disabled，leak detection 关闭。
+- TSan：20 个 OccSTM 用例在 system allocator 下重复 10 轮通过；没有全仓库或
+  TierAlloc 的 TSan 通过结论。
+- Python runner 的 9 个 unittest 方法通过，包含四后端短时计数对账。
+- 部分历史 OccSTM/TierAlloc/WwSTM 测试仍未纳入默认构建。命令及范围见[测试记录](docs/testing.md)。
+
+剪枝竞争的复现、原子链边修复和延迟回收证据见
+[BUG-09](BUG-09-OccSTM并发剪枝链边数据竞争.md)。性能诊断提交 `8cd38e0` 的
+[三项远端 CI](https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054) 已通过；
+该结果不替代审计分支的 CI 验证。
 
 VERIFY 用于逻辑验证，保留部分已发布对象，不验证 WwSTM 的真实 EBR 物理回收。
 mode=0 包含真实退休路径，但 TierAlloc 在线程退出时仍保留部分 chunk 到进程结束，
@@ -119,7 +125,7 @@ shared_mutex、OccSTM 和 WwSTM。以下是历史实验结果，本轮没有重�
 
 ![50R/50W high throughput](docs/images/benchmark/throughput-50r50w-high.png)
 
-本分支另完成 108 次 OccSTM 退避对照：立即重试 30/36 次有效，`yield` 和
+性能诊断阶段另完成 108 次 OccSTM 退避对照：立即重试 30/36 次有效，`yield` 和
 随机退避各 36/36 次有效。20T、50R/50W、16 keys 的立即重试 0/3 次有效，
 明确触发 retry guard；随机退避 3/3 次有效，平均约 97.3 万 TPS。
 单线程低冲突的平均吞吐下降约 1.5%～2.6%，同样保留在

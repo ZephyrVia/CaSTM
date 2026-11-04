@@ -124,9 +124,11 @@ ACTIVE → COMMITTED CAS 改变它们的逻辑解释，后续展平只做物理�
 
 ### 现在验证到什么程度，下一步先做什么？
 
-本分支 mode=0 与 ASan+UBSan 各 57 个测试通过；VERIFY 有 50 个通过、7 个跳过；
+审计分支 mode=0 与 ASan+UBSan 各 62 个测试通过；VERIFY 有 55 个通过、7 个跳过；
 另有 1 个高冲突测试禁用。新增 OccSTM 的 TMVar/Transaction 与诊断回归；
 其他历史 OccSTM/TierAlloc 测试仍未全部纳入默认构建。
-TSan 本轮未跑，ASan 关闭泄漏检测，线程退出保留 chunk 的边界也仍然存在。
-失败原因、重试分布和退避对照已经补齐。下一步优先审计 OccSTM 历史链并发剪枝，
-再测长时运行与 RSS；新的热点路径优化需要单独 profiling 后决定。
+TSan 在 system allocator 下验证了 20 个 OccSTM 用例，重复 10 轮通过。
+已复现并修复读者遍历与写者剪断普通 prev 指针的竞争；证据见 [BUG-09](../../BUG-09-OccSTM并发剪枝链边数据竞争.md)。
+ASan 关闭泄漏检测，线程退出保留 chunk 的边界也仍然存在。
+失败原因、退避对照和已发现的历史链边竞争修复已完成。下一步测长时运行与 RSS，
+进一步检查慢读者与线程 churn；新的热点路径优化需要单独 profiling 后决定。

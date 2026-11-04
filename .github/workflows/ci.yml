@@ -75,3 +75,32 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-asan-ubsan --output-on-failure
+
+  occ-tsan:
+    name: OccSTM history and reclamation (TSan)
+    runs-on: ubuntu-22.04
+    env:
+      TSAN_OPTIONS: halt_on_error=1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-occ-tsan
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-g -O1 -fno-omit-frame-pointer -fsanitize=thread
+          -DSTM_WW_VERIFY_LOGIC_MODE=0 -DSTM_ALLOCATOR_MODE=0"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          -DCMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE=PRE_TEST
+
+      - name: Build
+        run: cmake --build build-occ-tsan --target run_tests --parallel 2
+
+      # Old TSan runtimes can collide with randomized mappings before main().
+      # This affects only this process; do not change system-wide ASLR settings.
+      - name: Test OccSTM
+        run: >
+          timeout 120s setarch "$(uname -m)" -R
+          ./build-occ-tsan/tests/run_tests
+          --gtest_filter='Occ*' --gtest_repeat=10

@@ -50,7 +50,7 @@ TEST_F(OccDataStructureTest, IntegerInitialization) {
 
     // 验证创世版本信息
     EXPECT_EQ(head->write_ts, 0) << "Genesis version should be 0";
-    EXPECT_EQ(head->prev, nullptr) << "Genesis node should have no previous version";
+    EXPECT_EQ(head->prev.load(std::memory_order_acquire), nullptr) << "Genesis node should have no previous version";
     EXPECT_EQ(head->payload, 0) << "Payload should be default constructed (0 for int)";
 }
 
@@ -93,10 +93,11 @@ TEST_F(OccDataStructureTest, VersionChaining) {
     EXPECT_EQ(current_head->write_ts, 100);
     
     // 验证回溯 (History Traversal)
-    ASSERT_NE(current_head->prev, nullptr);
-    EXPECT_EQ(current_head->prev, old_head);
-    EXPECT_EQ(current_head->prev->payload, 0); 
-    EXPECT_EQ(current_head->prev->write_ts, 0);
+    auto* previous = current_head->prev.load(std::memory_order_acquire);
+    ASSERT_NE(previous, nullptr);
+    EXPECT_EQ(previous, old_head);
+    EXPECT_EQ(previous->payload, 0);
+    EXPECT_EQ(previous->write_ts, 0);
 }
 
 // 测试 4: 验证 ThreadHeap/Operator New 是否正常工作

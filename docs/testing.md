@@ -1,12 +1,36 @@
 # 测试范围与验证记录
 
-当前分支 `codex/perf-diagnostics` 在 `v0.1.0-prototype` 基线上新增了 OccSTM
-失败分类、重试统计与有界随机退避。测试入口是
+当前分支 `codex/occ-reclamation-audit` 在已通过远端 CI 的性能诊断提交
+`8cd38e0` 上补充版本链剪枝审计。入口仍是
 [tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。
+
+## 并发剪枝审计的验证
+
+新增 `OccSTM/test_Reclamation.cpp` 的 5 个用例，总计登记 63 个 C++ 用例：
+
+| 构建 | 通过 | 跳过 | 禁用 | 失败 |
+| --- | ---: | ---: | ---: | ---: |
+| Release / mode=0 | 62 | 0 | 1 | 0 |
+| Debug / VERIFY | 55 | 7 | 1 | 0 |
+| Debug / ASan+UBSan / mode=0 | 62 | 0 | 1 | 0 |
+
+Python 的 9 个 unittest 方法通过。额外使用 system allocator 对 20 个 OccSTM
+用例做 TSan 验证，重复 10 轮、200 次执行通过；这不是全仓库或 TierAlloc 的 TSan
+通过结论。修复前的 `c64e62b` 在同样 TSan 设置下复现了已发布 prev 链边的数据竞争。
+测试覆盖持有旧尾指针、看到剪断边、重复退休及真实事务的并发遍历/剪枝。
+
+本机 TSan 需要 `setarch x86_64 -R` 调整单个进程的地址布局；没有全局关闭 ASLR。
+ASan 仍关闭泄漏检测，1 个 WwSTM 高冲突用例仍保持 disabled。
+[BUG-09](../BUG-09-OccSTM并发剪枝链边数据竞争.md) 说明根因、内存访问顺序和复现命令；
+[验证记录与原始日志](validation/occ-reclamation-2026-11-04/result.json) 保存哈希及完整范围。
+
+性能诊断提交的 [远端 CI #7](https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054)
+已确认三项 job 成功。审计分支在本地新增 `occ-tsan` CI job；上述修复结果均为本地
+运行，不能借用基线提交的远端 CI 状态。下文保留先前两个阶段的验证记录。
 
 ## 诊断与退避分支的新增覆盖
 
-本分支新增登记 21 个 C++ 用例，总计 58 个，其中原有 1 个高冲突 WwSTM 用例
+性能诊断阶段新增登记 21 个 C++ 用例，总计 58 个，其中原有 1 个高冲突 WwSTM 用例
 仍保持 disabled。本地结果为：
 
 | 构建 | 通过 | 跳过 | 禁用 | 失败 |

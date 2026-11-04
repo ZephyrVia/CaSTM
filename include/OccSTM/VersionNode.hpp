@@ -1,8 +1,6 @@
 #pragma once
+#include <atomic>
 #include "STM/Allocator.hpp"
-
-#pragma once
-#include "TierAlloc/ThreadHeap/ThreadHeap.hpp"
 
 namespace STM {
 namespace Occ {
@@ -13,14 +11,16 @@ namespace detail {
 template<typename T>
 struct VersionNode {
     uint64_t write_ts;
-    VersionNode* prev;
+    // Writers can detach history after this node has been published. EBR
+    // protects node lifetime; atomic access separately protects this link.
+    std::atomic<VersionNode*> prev;
     T payload;
 
     template<typename... Args>
     VersionNode(uint64_t v, VersionNode* p, Args&&... args) 
-        : payload(std::forward<Args>(args)...)
-        , write_ts(v)
+        : write_ts(v)
         , prev(p)
+        , payload(std::forward<Args>(args)...)
         {}
 
     static void* operator new(size_t size) { return STM::Memory::occAllocate(size); }

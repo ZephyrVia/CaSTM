@@ -1,0 +1,2 @@
+# Preserve sanitizer and test evidence byte-for-byte for recorded SHA-256 hashes.
+*.txt -text

@@ -19,4 +19,6 @@
 | BUG-07 | [WwSTM single-head Locator 协议与实现](BUG-07-WwSTM-single-head-Locator协议设计审计.md) | Commit B 已实现 | `91c32c0` |
 | BUG-08 | [WwSTM TxDescriptor 生命周期与对齐](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md) | 已修复 | `ba1e308`, `0247b1b`, `c5973c2` |
 
-最后更新：2026-11-04（文档收尾；未变更各历史修复提交的结论）。
+| BUG-09 | [OccSTM 并发剪枝链边数据竞争](BUG-09-OccSTM并发剪枝链边数据竞争.md) | 审计分支已修复并本地验证 | 复现基线 `c64e62b` |
+
+最后更新：2026-11-04（新增 OccSTM 并发剪枝审计；各历史记录独立保留）。

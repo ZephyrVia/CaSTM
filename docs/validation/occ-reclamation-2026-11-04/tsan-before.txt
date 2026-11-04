@@ -1,0 +1,78 @@
+Running main() from /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = OccReclamationTest.*
+[==========] Running 5 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 5 tests from OccReclamationTest
+[ RUN      ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot
+[       OK ] OccReclamationTest.ReaderObservesCutEdgeAndRetriesWithFreshSnapshot (197 ms)
+[ RUN      ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves
+[       OK ] OccReclamationTest.CachedTailSurvivesRepeatedPruningUntilReaderLeaves (0 ms)
+[ RUN      ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce
+[       OK ] OccReclamationTest.MultipleWritesInOneCommitRetireEachNodeOnce (0 ms)
+[ RUN      ] OccReclamationTest.PublishedEdgeReadOverlapsPruning
+==================
+WARNING: ThreadSanitizer: data race (pid=21197)
+  Write of size 8 at 0x7b0800000c68 by main thread:
+    #0 committer /mnt/d/编码练习/事务原型/castm/include/OccSTM/TMVar.hpp:120 (run_tests+0x38826)
+    #1 STM::Occ::Transaction::commit() /mnt/d/编码练习/事务原型/castm/src/OccSTM/Transaction.cpp:33 (run_tests+0x8b8d1)
+    #2 publish /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:68 (run_tests+0x3a7c4)
+    #3 TestBody /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:204 (run_tests+0x3bc16)
+    #4 void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdbb66)
+    #5 void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdbb66)
+    #6 testing::Test::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2687 (run_tests+0xc3857)
+    #7 testing::TestInfo::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2836 (run_tests+0xc3a5f)
+    #8 testing::TestSuite::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:3015 (run_tests+0xc6824)
+    #9 testing::internal::UnitTestImpl::RunAllTests() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5920 (run_tests+0xcb879)
+    #10 bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdc1e7)
+    #11 bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdc1e7)
+    #12 testing::UnitTest::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5484 (run_tests+0xc3c19)
+    #13 RUN_ALL_TESTS() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/include/gtest/gtest.h:2317 (run_tests+0x8de7e)
+    #14 main /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc:64 (run_tests+0x8de7e)
+
+  Previous read of size 8 at 0x7b0800000c68 by thread T3:
+    #0 previous /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:54 (run_tests+0x38f23)
+    #1 operator() /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:197 (run_tests+0x38f23)
+    #2 __invoke_impl<void, (anonymous namespace)::OccReclamationTest_PublishedEdgeReadOverlapsPruning_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:61 (run_tests+0x38f23)
+    #3 __invoke<(anonymous namespace)::OccReclamationTest_PublishedEdgeReadOverlapsPruning_Test::TestBody()::<lambda()> > /usr/include/c++/11/bits/invoke.h:96 (run_tests+0x38f23)
+    #4 _M_invoke<0> /usr/include/c++/11/bits/std_thread.h:259 (run_tests+0x38f23)
+    #5 operator() /usr/include/c++/11/bits/std_thread.h:266 (run_tests+0x38f23)
+    #6 _M_run /usr/include/c++/11/bits/std_thread.h:211 (run_tests+0x38f23)
+    #7 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Location is heap block of size 32 at 0x7b0800000c60 allocated by main thread:
+    #0 operator new(unsigned long) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:64 (libtsan.so.0+0x8f162)
+    #1 STM::Memory::systemAllocate(unsigned long) /mnt/d/编码练习/事务原型/castm/include/STM/Allocator.hpp:27 (run_tests+0x3a045)
+    #2 STM::Memory::occAllocate(unsigned long) /mnt/d/编码练习/事务原型/castm/include/STM/Allocator.hpp:36 (run_tests+0x3a045)
+    #3 operator new /mnt/d/编码练习/事务原型/castm/include/OccSTM/VersionNode.hpp:26 (run_tests+0x3a045)
+    #4 store<std::shared_ptr<(anonymous namespace)::Probe> > /mnt/d/编码练习/事务原型/castm/include/OccSTM/Transaction.hpp:97 (run_tests+0x3a045)
+    #5 publish /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:67 (run_tests+0x3a74a)
+    #6 TestBody /mnt/d/编码练习/事务原型/castm/tests/OccSTM/test_Reclamation.cpp:186 (run_tests+0x3b721)
+    #7 void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdbb66)
+    #8 void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdbb66)
+    #9 testing::Test::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2687 (run_tests+0xc3857)
+    #10 testing::TestInfo::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2836 (run_tests+0xc3a5f)
+    #11 testing::TestSuite::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:3015 (run_tests+0xc6824)
+    #12 testing::internal::UnitTestImpl::RunAllTests() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5920 (run_tests+0xcb879)
+    #13 bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdc1e7)
+    #14 bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdc1e7)
+    #15 testing::UnitTest::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5484 (run_tests+0xc3c19)
+    #16 RUN_ALL_TESTS() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/include/gtest/gtest.h:2317 (run_tests+0x8de7e)
+    #17 main /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc:64 (run_tests+0x8de7e)
+
+  Thread T3 (tid=21201, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 void testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdbb66)
+    #3 void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdbb66)
+    #4 testing::Test::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2687 (run_tests+0xc3857)
+    #5 testing::TestInfo::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2836 (run_tests+0xc3a5f)
+    #6 testing::TestSuite::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:3015 (run_tests+0xc6824)
+    #7 testing::internal::UnitTestImpl::RunAllTests() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5920 (run_tests+0xcb879)
+    #8 bool testing::internal::HandleSehExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2612 (run_tests+0xdc1e7)
+    #9 bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:2648 (run_tests+0xdc1e7)
+    #10 testing::UnitTest::Run() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest.cc:5484 (run_tests+0xc3c19)
+    #11 RUN_ALL_TESTS() /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/include/gtest/gtest.h:2317 (run_tests+0x8de7e)
+    #12 main /mnt/d/编码练习/事务原型/castm/third_party/googletest/googletest/src/gtest_main.cc:64 (run_tests+0x8de7e)
+
+SUMMARY: ThreadSanitizer: data race /mnt/d/编码练习/事务原型/castm/include/OccSTM/TMVar.hpp:120 in committer
+==================

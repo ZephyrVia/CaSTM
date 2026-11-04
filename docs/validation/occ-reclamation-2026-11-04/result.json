@@ -1,0 +1,102 @@
+{
+  "date": "2026-11-04",
+  "timezone": "Asia/Shanghai",
+  "branch": "codex/occ-reclamation-audit",
+  "performance_commit": "8cd38e005627a6c139e266abc574c603d0df4ee6",
+  "performance_ci": {
+    "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/41765892054",
+    "conclusion": "success",
+    "jobs": [
+      "Build and test (WwSTM mode=0)",
+      "Build and test (VERIFY)",
+      "ASan and UBSan"
+    ],
+    "verification": "Public Actions page matched exact commit SHA and all three successful jobs"
+  },
+  "reproducer_commit": "c64e62b142278942c8d5011bf6de9ad110b00ec8",
+  "fix_source_sha256": {
+    "include/OccSTM/VersionNode.hpp": "194be6be1ddd489b5cf5e2b0501cd29f22e5c7fa858428aa5117c81bc2780807",
+    "include/OccSTM/TMVar.hpp": "1407720f75cb41a8b21f74871ccc32b41d3c6a1295eb2b78cf3adeeffb12d21a",
+    "include/OccSTM/Transaction.hpp": "1674bd646ca981cd85b1b5b1ba27faf36f948d8b86dccf8cf19971a7b74b348e",
+    "tests/OccSTM/test_TMVar.cpp": "3d42e8f9a2ba7170b6626fc8aacf9042c796248f09ed4c8cda73f71fba6ed71b",
+    "tests/OccSTM/test_Reclamation.cpp": "987a4f7392b4f47d4d906e6fabec02c96d7e1414412bd82993ac850eccdd299d"
+  },
+  "compiler": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "kernel": "6.18.40.1-microsoft-standard-WSL2",
+  "ctest_timeout_s": 60,
+  "results": [
+    {
+      "mode": "release-mode0",
+      "registered": 63,
+      "passed": 62,
+      "skipped": 0,
+      "disabled": 1,
+      "failed": 0,
+      "log": "release.txt"
+    },
+    {
+      "mode": "debug-verify",
+      "registered": 63,
+      "passed": 55,
+      "skipped": 7,
+      "disabled": 1,
+      "failed": 0,
+      "log": "verify.txt"
+    },
+    {
+      "mode": "asan-ubsan-mode0",
+      "registered": 63,
+      "passed": 62,
+      "skipped": 0,
+      "disabled": 1,
+      "failed": 0,
+      "log": "asan-ubsan.txt"
+    }
+  ],
+  "python_tests": {
+    "methods": 9,
+    "passed": 9,
+    "skipped": 0,
+    "log": "python.txt"
+  },
+  "tsan": {
+    "allocator": "system (-DSTM_ALLOCATOR_MODE=0 for library and tests)",
+    "options": "halt_on_error=1",
+    "suppressions": [],
+    "process_launcher": "setarch x86_64 -R (process-local ASLR disabled)",
+    "initial_default_launch": "exited before tests: ThreadSanitizer unexpected memory mapping",
+    "before": {
+      "source_commit": "c64e62b142278942c8d5011bf6de9ad110b00ec8",
+      "filter": "OccReclamationTest.*",
+      "exit_code": 66,
+      "race_test": "OccReclamationTest.PublishedEdgeReadOverlapsPruning",
+      "write": "TMVar.hpp:120 committer",
+      "read": "test_Reclamation.cpp:54 previous",
+      "log": "tsan-before.txt"
+    },
+    "after": {
+      "filter": "Occ*",
+      "tests_per_iteration": 20,
+      "iterations": 10,
+      "test_executions": 200,
+      "exit_code": 0,
+      "log": "tsan-after.txt"
+    }
+  },
+  "asan_options": "detect_leaks=0:halt_on_error=1",
+  "ubsan_options": "halt_on_error=1:print_stacktrace=1",
+  "limits": [
+    "Fix-branch results are local; the confirmed remote CI result above belongs to the performance commit.",
+    "TSan covers OccSTM with the system allocator, not the entire repository or TierAlloc.",
+    "No complete isolation, EBR memory-model, starvation-freedom or long-running RSS proof is claimed.",
+    "Historical performance data is unchanged; no throughput claim is made for the atomic-link change."
+  ],
+  "artifacts_sha256": {
+    "tsan-before.txt": "de736dceb2a2da1b8820adc9a3874e5bddfb7a14f84ebb8039e29163cce97eb0",
+    "tsan-after.txt": "34c38b5f2d2ef7d5fcf1022f057d2a6340c67294f2104a29a9f29d0ef1b1131e",
+    "release.txt": "f9506421b181bd6c7ba8a1943bbec8cac3e57bf84b6be18b29ec7d75a73a6a37",
+    "verify.txt": "8ea1c982c432535b92c1ed7e47cb811b78f5c66cf9fc1f46f2db1d6731c24d07",
+    "asan-ubsan.txt": "1f666486613e8d0a1e8cc5e8475b77434e638b80badce11af0313708870d2dae",
+    "python.txt": "4782a275c1a697784686734775447581b656c8f481b1252d76b10cdfacbe88d4"
+  }
+}

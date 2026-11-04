@@ -49,9 +49,10 @@ TMVar<T>::TMVar(Args&&... args) {
 
 template<typename T>
 TMVar<T>::~TMVar() {
+    // The owner must quiesce users before destroying the variable.
     Node* curr = head_.load(std::memory_order_acquire);
     while (curr) {
-        Node* next = curr->prev;
+        Node* next = curr->prev.load(std::memory_order_relaxed);
         // 自动调用 VersionNode::operator delete
         delete curr; 
         curr = next;
@@ -68,7 +69,8 @@ template<typename T>
 void TMVar<T>::chainDeleter_(void* p) {
     auto* node = static_cast<Node*>(p);
     while (node) {
-        auto* next = node->prev;
+        // Detached chains are exclusively owned here after the EBR grace period.
+        auto* next = node->prev.load(std::memory_order_relaxed);
         delete node; // 使用 VersionNode 的 delete (归还给内存池)
         node = next;
     }
@@ -102,24 +104,25 @@ void TMVar<T>::committer(void* tmvar_ptr, void* node_ptr, uint64_t wts) {
     new_node->write_ts = wts;
     
     std::atomic<Node*>& head_ref = tmvar->getHeadRef();
-    // 1. 正常的挂链（Relaxed 因为我们在锁内）
+    // The write stripe serializes committers. Initialize the private node's
+    // link before publishing it through the release store to head.
     Node* old_head = head_ref.load(std::memory_order_relaxed);
-    new_node->prev = old_head;
+    new_node->prev.store(old_head, std::memory_order_relaxed);
     head_ref.store(new_node, std::memory_order_release);
 
     int depth = 0;
     Node* curr = new_node;
     
     while (curr && depth < MAX_HISTORY) {
-        curr = curr->prev;
+        curr = curr->prev.load(std::memory_order_acquire);
         depth++;
     }
 
-    if (curr && curr->prev) {
-        Node* garbage = curr->prev;
-        curr->prev = nullptr;   // 关键步骤：逻辑斩断！
-
-        EBRManager::instance()->retire(garbage, TMVar<T>::chainDeleter_);  // 现在的 garbage 才是真正安全的回收对象
+    if (curr) {
+        // Atomically detach one tail. Readers may see the old link or nullptr;
+        // neither observation permits freeing nodes before their EBR guards end.
+        Node* garbage = curr->prev.exchange(nullptr, std::memory_order_acq_rel);
+        if (garbage) EBRManager::instance()->retire(garbage, TMVar<T>::chainDeleter_);
     }
 }
 

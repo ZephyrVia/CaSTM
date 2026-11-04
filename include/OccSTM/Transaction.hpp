@@ -78,7 +78,9 @@ T Transaction::load(TMVar<T>& var) {
 
     // 遍历链表找 <= RV 的版本
     while (curr != nullptr && curr->write_ts > rv) {
-        curr = curr->prev;
+        // A concurrent writer may detach this edge. Seeing nullptr means
+        // retry; a previously loaded old pointer remains protected by EBR.
+        curr = curr->prev.load(std::memory_order_acquire);
     }
     
     if(curr == nullptr) {
