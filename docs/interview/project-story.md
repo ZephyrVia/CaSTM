@@ -1,5 +1,7 @@
 # CaSTM 面试讲稿
 
+实习投递固定版本：[v0.2.0-prototype](../releases/v0.2.0-prototype.md)。
+
 统一定位：C++17 软件事务内存与并发控制原型。实现细节见
 [当前设计](../../OSTM_WW.md)，验证数字见[测试范围](../testing.md)，
 性能数据见[实验报告](../performance/README.md)。

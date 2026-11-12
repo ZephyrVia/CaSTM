@@ -1,5 +1,9 @@
 # 测试范围与验证记录
 
+实习投递版本为 [v0.2.0-prototype](releases/v0.2.0-prototype.md)。以下各阶段实验保持
+原日期与来源；发布前对 `4020a91` 的四项 CI 核验见
+[2026-11-12 记录](validation/prototype-release-2026-11-12.json)。
+
 版本链剪枝审计分支 `codex/occ-reclamation-audit` 在已通过远端 CI 的性能诊断提交
 `8cd38e0` 上补充版本链剪枝审计。入口仍是
 [tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。

@@ -1,0 +1,53 @@
+{
+  "sha": "4020a91284649d3f2dfa701670d549f4367f7879",
+  "branch": "codex/occ-memory-soak",
+  "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/43172146699",
+  "status": {
+    "status": "WORKFLOW_RUN_STATUS_COMPLETED",
+    "conclusion": "WORKFLOW_RUN_CONCLUSION_SUCCESS"
+  },
+  "jobs": [
+    {
+      "name": "Build and test (WwSTM mode=0)",
+      "status": [
+        "completed successfully: "
+      ],
+      "concluded": [
+        "true"
+      ],
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/43172146699/job/131027734693"
+    },
+    {
+      "name": "Build and test (VERIFY)",
+      "status": [
+        "completed successfully: "
+      ],
+      "concluded": [
+        "true"
+      ],
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/43172146699/job/131027734854"
+    },
+    {
+      "name": "ASan and UBSan",
+      "status": [
+        "completed successfully: "
+      ],
+      "concluded": [
+        "true"
+      ],
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/43172146699/job/131027734382"
+    },
+    {
+      "name": "OccSTM history and reclamation (TSan)",
+      "status": [
+        "completed successfully: "
+      ],
+      "concluded": [
+        "true"
+      ],
+      "url": "https://github.com/ZephyrVia/CaSTM/actions/runs/43172146699/job/131027734769"
+    }
+  ],
+  "verified_on": "2026-11-12",
+  "scope": "Pre-release memory-soak branch commit; subsequent documentation commit is checked separately before merging."
+}

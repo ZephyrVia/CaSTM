@@ -1,8 +1,12 @@
-[![CI](https://github.com/ZephyrVia/CaSTM/actions/workflows/ci.yml/badge.svg?branch=codex%2Focc-reclamation-audit)](https://github.com/ZephyrVia/CaSTM/actions?query=branch%3Acodex%2Focc-reclamation-audit)
+[![CI](https://github.com/ZephyrVia/CaSTM/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ZephyrVia/CaSTM/actions?query=branch%3Amain)
 
 # CaSTM
 
 **C++17 软件事务内存与并发控制原型**
+
+实习投递版本：**[v0.2.0-prototype](https://github.com/ZephyrVia/CaSTM/tree/v0.2.0-prototype)**。
+[版本说明](docs/releases/v0.2.0-prototype.md)汇总实现、验证证据及已知限制；简历与
+面试准备以此标签对应的代码和文档为准。
 
 CaSTM 将进程内共享变量的读写组织成事务，实现了 OccSTM 和 WwSTM 两条并发控制
 路线，并包含 EBR 延迟回收与 TierAlloc 分层分配器。项目重点是多变量提交、并发

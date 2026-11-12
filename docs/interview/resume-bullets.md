@@ -1,6 +1,7 @@
 # CaSTM 简历项目描述
 
 项目名称：**CaSTM：C++17 软件事务内存与并发控制原型**。
+实习投递固定版本：**[v0.2.0-prototype](../releases/v0.2.0-prototype.md)**。
 以下内容对应已有实现；[测试范围](../testing.md)与
 [最终修复后的性能复测](../performance/occ-ebr-performance.md)及
 [历史性能报告](../performance/README.md)可在仓库中核验。
