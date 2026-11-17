@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: candidate
-          ref: codex/tieralloc-threadheap-depot-20261117
+          ref: codex/tieralloc-churn-ab-20261117
       - name: Check out pre-depot baseline
         uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
           for v in baseline depot; do
             if [ "$v" = baseline ]; then bin=baseline/build-ab/benchmarks/occ_memory_soak; else bin=candidate/build-ab/benchmarks/occ_memory_soak; fi
             echo "RUNNING $v: $(date -u +%FT%TZ)"
-            "$bin" \
+            timeout 135s "$bin" \
               --samples "results/$v.csv" --result "results/$v.json" \
               --phase-seconds 90 --threads 20 --sample-ms 500 \
               --rate-per-worker 1000 --hold-ms 200 --recovery-ms 200 \
