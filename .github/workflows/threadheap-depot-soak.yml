@@ -1,0 +1,47 @@
+name: TierAlloc Depot 10-minute real STM/EBR churn
+on:
+  push:
+    branches: [codex/tieralloc-churn-ab-20261117]
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Depot real OccSTM EBR 10-minute thread churn
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure native TierAlloc + OccSTM
+        run: >
+          cmake -S . -B build-soak
+          -DCMAKE_BUILD_TYPE=Release
+          -DSTM_ALLOCATOR_MODE=native
+          -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=0 -DSTM_ALLOCATOR_MODE=-1"
+      - name: Build real transaction validation binary
+        run: cmake --build build-soak --target occ_memory_soak --parallel 2
+      - name: Ten-minute thread churn with checksum and EBR verification
+        env:
+          CASTM_SOAK_CHURN_ONLY: "1"
+        run: |
+          mkdir -p soak-results
+          git rev-parse HEAD > soak-results/candidate-commit.txt
+          sha256sum build-soak/benchmarks/occ_memory_soak > soak-results/binary-sha256.txt
+          timeout 720s ./build-soak/benchmarks/occ_memory_soak \
+            --samples soak-results/depot-soak-samples.csv \
+            --result soak-results/depot-soak-result.json \
+            --phase-seconds 600 --threads 20 --sample-ms 1000 \
+            --rate-per-worker 1000 --hold-ms 5000 --recovery-ms 5000 \
+            --batch-ms 5000 --batch-transactions 2000 --settle-ms 2000 \
+            --rss-limit-mib 1024 --vms-limit-mib 8192
+      - name: Strictly verify allocator and transaction outcomes
+        run: python3 scripts/verify_threadheap_depot_soak.py soak-results
+      - name: Upload source-linked raw data and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: castm-depot-10min-20261117
+          path: soak-results/
+          retention-days: 90
+          if-no-files-found: warn
