@@ -105,14 +105,28 @@ void pauseAfterCommitted(TxContext&) {
 class TMVarTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Direct TMVar tests dereference raw Node/Record pointers.  Keep the
-        // entire test body inside one EBR critical section in mode=0.
+        // Direct TMVar tests dereference raw Node/Record pointers.  Keep
+        // them protected until the test deliberately releases this guard.
         EBRManager::instance()->enter();
+        fixture_guard_active_ = true;
     }
 
     void TearDown() override {
-        EBRManager::instance()->leave();
+        releaseFixtureGuard();
     }
+
+    void releaseFixtureGuard() {
+        // Some EBR lifetime tests need to leave early and then drive epoch
+        // progress to check physical reclamation. A second leave from
+        // TearDown would be unbalanced and is no longer silently accepted.
+        if (fixture_guard_active_) {
+            EBRManager::instance()->leave();
+            fixture_guard_active_ = false;
+        }
+    }
+
+private:
+    bool fixture_guard_active_ = false;
 };
 
 TEST_F(TMVarTest, Construction) {
@@ -610,7 +624,7 @@ TEST_F(TMVarTest, PublishedWriteRecordRetiresAfterHelper) {
     ASSERT_TRUE(var.debugHelpCurrentRecordForTest());
     ASSERT_NE(held_record.load(std::memory_order_acquire), nullptr);
     ASSERT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 0);
-    mgr->leave();
+    releaseFixtureGuard();
 
     state.allow_reader_dereference.signal();
     state.reader_dereferenced.wait_until(1);
@@ -651,7 +665,7 @@ TEST_F(TMVarTest, PublishedWriteRecordRetiredExactlyOnce) {
     var.abortRestoreData(record);
 
     ASSERT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 0);
-    mgr->leave();
+    releaseFixtureGuard();
     for (int i = 0;
          i < 4 && TestRecord::debug_destructor_count.load(std::memory_order_relaxed) == 0;
          ++i) {
@@ -688,7 +702,7 @@ TEST_F(TMVarTest, OwnerCleanupAfterHelperUsesTokenOnly) {
     var.abortRestoreData(record);
     ASSERT_EQ(TestRecord::debug_destructor_count.load(std::memory_order_relaxed), 0);
 
-    mgr->leave();
+    releaseFixtureGuard();
     for (int i = 0;
          i < 4 && TestRecord::debug_destructor_count.load(std::memory_order_relaxed) == 0;
          ++i) {
