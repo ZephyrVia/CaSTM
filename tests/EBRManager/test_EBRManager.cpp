@@ -93,8 +93,6 @@ struct ParallelReclaimState {
     std::atomic<int> inside{0};
     std::atomic<int> completed{0};
     std::atomic<bool> overlapped{false};
-    std::mutex mutex;
-    std::condition_variable condition;
 };
 
 struct ParallelReclaimPayload {
@@ -106,17 +104,17 @@ struct ParallelReclaimPayload {
         const int active = state->inside.fetch_add(1, std::memory_order_acq_rel) + 1;
         if (active >= 2) {
             state->overlapped.store(true, std::memory_order_release);
-            state->condition.notify_all();
         }
 
-        // A timeout makes this a bounded regression even if a future global
-        // collector lock reintroduces serialization.
-        {
-            std::unique_lock<std::mutex> lock(state->mutex);
-            state->condition.wait_for(
-                lock, std::chrono::seconds(2), [this] {
-                    return state->overlapped.load(std::memory_order_acquire);
-                });
+        // This regression must not introduce its own mutex while checking
+        // collector parallelism. A bounded atomic rendezvous also ensures
+        // that reintroducing a collector lock produces a test failure, not
+        // an indefinite hang.
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!state->overlapped.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
         }
 
         state->inside.fetch_sub(1, std::memory_order_acq_rel);
