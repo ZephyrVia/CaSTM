@@ -2,6 +2,18 @@
 #include "EBRManager/EBRManager.hpp"
 #include "EBRManager/ThreadSlot.hpp"
 
+#include <cassert>
+#include <cstddef>
+#include <exception>
+#include <new>
+
+namespace {
+// The EBRManager is a process-wide singleton. Nested guards must share
+// the original epoch announcement until the outermost guard exits.
+thread_local std::size_t ebr_guard_depth = 0;
+}
+
+
 EBRManager::EBRManager() {
     // 初始化全局纪元为0
     global_epoch_.store(0, std::memory_order_relaxed);
@@ -18,33 +30,66 @@ ThreadSlot* EBRManager::getLocalSlot_() {
 }
 
 void EBRManager::enter() {
-    ThreadSlot* slot = getLocalSlot_();
-    if (slot) {
-        // 登记-复核循环：在“读取全局纪元”与“登记到槽位”两步之间，
-        // 其他线程可能连续推进纪元并完成回收。若以过期纪元登记，
-        // 本线程会错过它本应挡住的推进。复核并前移到最新纪元
-        // （前移只发生在本线程任何读取之前，方向安全）。
-        for (int i = 0; i < 4; ++i) {
-            uint64_t current_epoch = global_epoch_.load(std::memory_order_acquire);
-            slot->enter(current_epoch);
-            uint64_t now = global_epoch_.load(std::memory_order_acquire);
-            if (now == current_epoch) break;
-            slot->setEpoch(now);
-        }
+    // Inner guards must preserve the outer reader's announced epoch.
+    if (ebr_guard_depth != 0) {
+        ++ebr_guard_depth;
+        return;
     }
+
+    ThreadSlot* slot = getLocalSlot_();
+    if (!slot) {
+        // Never enter an EBR critical section without registering a slot.
+        throw std::bad_alloc();
+    }
+
+    // Publish the slot before accessing any EBR-protected object, then
+    // recheck until the observed global epoch matches the *announced* one.
+    // Four tries (or any other finite limit) could return on a mismatch.
+    //
+    // Seq-cst slot publication / scanning and global epoch advance provide
+    // a common order for the reader/advancer handshake.
+    uint64_t announced = global_epoch_.load(std::memory_order_seq_cst);
+    slot->enter(announced);
+
+    for (;;) {
+        const uint64_t observed =
+            global_epoch_.load(std::memory_order_seq_cst);
+        if (observed == announced) {
+            break;
+        }
+
+        // No protected pointer has been read, so moving forward is safe.
+        // Compare the next recheck against the epoch we just published.
+        slot->setEpoch(observed);
+        announced = observed;
+    }
+
+    ebr_guard_depth = 1;
 }
 
 
 void EBRManager::leave() {
-    ThreadSlot* slot = getLocalSlot_();
-    if (slot) {
-        // 标记线程离开临界区（变为非活跃状态）
-        slot->leave();
-
-        // Destructors run after releasing the epoch lock. The detached list is
-        // private, so later epoch advances cannot add new nodes to this batch.
-        garbage_collector_.collect(tryAdvanceAndDetach_());
+    // An inner leave must never clear the outer guard's EBR protection.
+    assert(ebr_guard_depth > 0 && "unbalanced EBRManager::leave()");
+    if (ebr_guard_depth == 0) {
+        return;
     }
+    if (--ebr_guard_depth != 0) {
+        return;
+    }
+
+    ThreadSlot* slot = getLocalSlot_();
+    assert(slot != nullptr);
+    if (!slot) {
+        std::terminate();
+    }
+
+    // Outermost leave: publish quiescence and attempt reclamation.
+    slot->leave();
+
+    // Expired list is detached under the epoch mutex, but deleters are
+    // invoked after releasing that mutex.
+    garbage_collector_.collect(tryAdvanceAndDetach_());
 }
 
 GarbageNode* EBRManager::tryAdvanceAndDetach_() {
@@ -52,7 +97,7 @@ GarbageNode* EBRManager::tryAdvanceAndDetach_() {
     if (!epoch_lock.owns_lock()) return nullptr;
 
     // 使用 acquire 内存序加载，确保我们能看到其他线程 leave 操作释放的最新状态
-    uint64_t current_epoch = global_epoch_.load(std::memory_order_acquire);
+    uint64_t current_epoch = global_epoch_.load(std::memory_order_seq_cst);
     
     bool can_advance = true;
 
@@ -76,8 +121,8 @@ GarbageNode* EBRManager::tryAdvanceAndDetach_() {
     if (!global_epoch_.compare_exchange_strong(
         current_epoch, 
         current_epoch + 1,
-        std::memory_order_acq_rel,
-        std::memory_order_relaxed
+        std::memory_order_seq_cst,
+        std::memory_order_seq_cst
     )) return nullptr;
 
     // Use this advance's epoch, not a later global load. Keep the epoch lock
