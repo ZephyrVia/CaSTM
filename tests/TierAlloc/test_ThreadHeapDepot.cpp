@@ -210,3 +210,42 @@ TEST(ThreadHeapDepotTest, FullAndPartialSlabsRemainStableAcrossHandoff) {
     successor.join();
     EXPECT_TRUE(intact);
 }
+
+TEST(ThreadHeapDepotTest, HeapCountStaysBoundedAcrossThreadWaves) {
+    constexpr int kConcurrentThreads = 6;
+    constexpr int kWaves = 4;
+    std::size_t high_water = 0;
+
+    for (int wave = 0; wave < kWaves; ++wave) {
+        std::atomic<int> ready{0};
+        std::atomic<bool> release{false};
+        std::atomic<bool> ok{true};
+        std::vector<std::thread> workers;
+
+        for (int i = 0; i < kConcurrentThreads; ++i) {
+            workers.emplace_back([&] {
+                void* ptr = AllocateAndTouch(64, 0x31);
+                if (!ptr) ok.store(false, std::memory_order_relaxed);
+                ready.fetch_add(1, std::memory_order_release);
+                while (!release.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                ThreadHeap::deallocate(ptr);
+            });
+        }
+
+        while (ready.load(std::memory_order_acquire) < kConcurrentThreads) {
+            std::this_thread::yield();
+        }
+        const auto during = ThreadHeapDepot::GetInstance().stats();
+        EXPECT_GE(during.leased_heaps, static_cast<std::size_t>(kConcurrentThreads));
+        release.store(true, std::memory_order_release);
+        for (auto& worker : workers) worker.join();
+        ASSERT_TRUE(ok.load(std::memory_order_relaxed));
+
+        const auto after = ThreadHeapDepot::GetInstance().stats();
+        if (wave == 0) high_water = after.created_heaps;
+        else EXPECT_EQ(after.created_heaps, high_water);
+        EXPECT_EQ(after.created_heaps, after.leased_heaps + after.idle_heaps);
+    }
+}

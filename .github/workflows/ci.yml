@@ -105,3 +105,13 @@ jobs:
           ./build-occ-tsan/tests/run_tests
           --gtest_filter='Occ*:EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive:EBRManagerTest.ReuseStackPreservesExclusiveOwnership'
           --gtest_repeat=50
+
+      # Runs the TierAlloc-specific ownership-handoff tests under TSan.
+      # Unlike the OccSTM filter above, these tests exercise TierAlloc itself.
+      - name: Test TierAlloc ThreadHeapDepot
+        run: >
+          timeout 180s setarch "$(uname -m)" -R
+          ./build-occ-tsan/tests/run_tests
+          --gtest_filter='ThreadHeapDepotTest.*'
+          --gtest_repeat=20
+
