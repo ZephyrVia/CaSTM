@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <condition_variable>
+#include <chrono>
 #include <cstddef>
 #include <mutex>
 #include <thread>
@@ -84,6 +85,117 @@ private:
     std::condition_variable condition_;
     int phase_ = 0;
 };
+
+// The collector no longer serializes private retired batches. Construct
+// payloads on the creator thread's TierAlloc Slab; concurrent deleters run on
+// two other threads and therefore also exercise remote-free publication.
+struct ParallelReclaimState {
+    std::atomic<int> inside{0};
+    std::atomic<int> completed{0};
+    std::atomic<bool> overlapped{false};
+    std::mutex mutex;
+    std::condition_variable condition;
+};
+
+struct ParallelReclaimPayload {
+    ParallelReclaimState* state;
+
+    explicit ParallelReclaimPayload(ParallelReclaimState* s) : state(s) {}
+
+    ~ParallelReclaimPayload() {
+        const int active = state->inside.fetch_add(1, std::memory_order_acq_rel) + 1;
+        if (active >= 2) {
+            state->overlapped.store(true, std::memory_order_release);
+            state->condition.notify_all();
+        }
+
+        // A timeout makes this a bounded regression even if a future global
+        // collector lock reintroduces serialization.
+        {
+            std::unique_lock<std::mutex> lock(state->mutex);
+            state->condition.wait_for(
+                lock, std::chrono::seconds(2), [this] {
+                    return state->overlapped.load(std::memory_order_acquire);
+                });
+        }
+
+        state->inside.fetch_sub(1, std::memory_order_acq_rel);
+        state->completed.fetch_add(1, std::memory_order_release);
+    }
+
+    static void* operator new(std::size_t size) {
+        void* p = ThreadHeap::allocate(size);
+        if (!p) throw std::bad_alloc();
+        return p;
+    }
+    static void operator delete(void* p) noexcept {
+        ThreadHeap::deallocate(p);
+    }
+};
+
+TEST(GarbageCollectorTest, IndependentDetachedBatchesRunConcurrently) {
+    GarbageCollector collector;
+    ParallelReclaimState state;
+
+    auto* payload_a = new ParallelReclaimPayload(&state);
+    auto* payload_b = new ParallelReclaimPayload(&state);
+    auto deleter = [](void* p) {
+        delete static_cast<ParallelReclaimPayload*>(p);
+    };
+
+    // GarbageNode metadata uses the system heap. The collector owns each
+    // detached batch, so separate workers may collect both in parallel.
+    GarbageNode* batch_a = new GarbageNode(payload_a, deleter);
+    GarbageNode* batch_b = new GarbageNode(payload_b, deleter);
+    std::atomic<bool> start{false};
+
+    std::thread a([&] {
+        while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        collector.collect(batch_a);
+    });
+    std::thread b([&] {
+        while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        collector.collect(batch_b);
+    });
+    start.store(true, std::memory_order_release);
+
+    a.join();
+    b.join();
+    EXPECT_TRUE(state.overlapped.load(std::memory_order_acquire))
+        << "independent batches should enter their deleters concurrently";
+    EXPECT_EQ(state.completed.load(std::memory_order_acquire), 2);
+    EXPECT_EQ(state.inside.load(std::memory_order_acquire), 0);
+}
+
+TEST(GarbageCollectorTest, ReentrantCollectOfDifferentPrivateBatch) {
+    GarbageCollector collector;
+    std::atomic<int> calls{0};
+
+    struct NestedReclaim {
+        GarbageCollector* collector;
+        GarbageNode* other_batch;
+        std::atomic<int>* calls;
+    };
+
+    GarbageNode* inner = new GarbageNode(&calls, [](void* ptr) {
+        static_cast<std::atomic<int>*>(ptr)->fetch_add(1, std::memory_order_relaxed);
+    });
+    GarbageNode* outer = new GarbageNode(
+        new NestedReclaim{&collector, inner, &calls},
+        [](void* ptr) {
+            auto* context = static_cast<NestedReclaim*>(ptr);
+            context->collector->collect(context->other_batch);
+            context->calls->fetch_add(1, std::memory_order_relaxed);
+            delete context;
+        });
+
+    // This would deadlock if collect() still held a non-recursive mutex.
+    // Both detached lists are distinct and each node is destroyed once.
+    collector.collect(outer);
+    EXPECT_EQ(calls.load(std::memory_order_relaxed), 2);
+}
 
 // ==========================================
 // 2. 测试夹具
