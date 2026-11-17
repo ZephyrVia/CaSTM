@@ -2,6 +2,8 @@
 #include <utility>
 #include <new>      // for std::nothrow
 #include <mutex>
+#include <cstdio>
+#include <cstdlib>
 
 ThreadSlotManager::ThreadSlotManager()
     : capacity_(0) {}
@@ -24,7 +26,24 @@ ThreadSlot* ThreadSlotManager::getLocalSlot() {
     return g_local_slot_proxy.get();
 }
 
-void ThreadSlotManager::releaseSlot_(ThreadSlot* slot) noexcept{
+void ThreadSlotManager::releaseSlot_(ThreadSlot* slot) noexcept {
+    if (!slot) return;
+
+    // A thread may return its slot only after all EBR critical sections
+    // have ended. Recycling an active announcement would let a new thread
+    // replace the epoch protecting the former owner's outstanding pointers.
+    // Do not silently clear an active slot or make it available for reuse.
+    if (ThreadSlot::isActive(slot->loadState())) {
+        std::fputs(
+            "EBR ThreadSlotManager: active ThreadSlot at thread exit "
+            "(unbalanced enter/leave)\n",
+            stderr);
+        std::abort();
+    }
+
+    // End the old thread's registration before publishing the slot to the
+    // reuse stack. The next owner will register a fresh epoch in enter().
+    slot->unregister();
     free_slots_.push(slot);
 }
 
@@ -66,18 +85,24 @@ ThreadSlot* ThreadSlotManager::expandAndAcquire() {
     // 记录该段的大小
     new_segment.count = new_slots_to_add;
 
-    // 3. 将前 N-1 个槽位放入空闲链表
-    // 注意：new[] 已经自动调用了 ThreadSlot 的默认构造函数，不需要再 placement new
-    for(size_t i = 0; i < new_slots_to_add - 1; ++i) {
+    // First commit ownership to the SegmentVector. This operation can
+    // allocate and throw std::bad_alloc; until it succeeds, no pointer from
+    // this array is visible to other threads, so the local unique_ptr can
+    // safely destroy the array on failure.
+    try {
+        segments_.push_back(std::move(new_segment));
+    } catch (const std::bad_alloc&) {
+        return nullptr;
+    }
+
+    capacity_.fetch_add(new_slots_to_add, std::memory_order_relaxed);
+
+    // Only now publish N-1 slots to the concurrent reuse stack. A pop()
+    // may happen immediately, but segments_ already owns their memory.
+    for (size_t i = 0; i + 1 < new_slots_to_add; ++i) {
         free_slots_.push(&new_slots_array[i]);
     }
 
-    // 4. 将新段移入容器管理
-    segments_.push_back(std::move(new_segment));
-    
-    capacity_.fetch_add(new_slots_to_add, std::memory_order_relaxed);
-
-    // 返回最后一个槽位给当前请求者
     return &new_slots_array[new_slots_to_add - 1];
 }
 

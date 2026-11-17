@@ -9,6 +9,7 @@
 #include <vector>
 #include <atomic>
 #include <new> // for placement new
+#include <unordered_set>
 
 // 引入你的头文件路径
 #include "EBRManager/EBRManager.hpp"
@@ -391,6 +392,99 @@ TEST_F(EBRManagerTest, NestedReadersWithConcurrentRetirement) {
     }
     EXPECT_EQ(bad_reads.load(std::memory_order_relaxed), 0);
     EXPECT_EQ(destroyed.load(std::memory_order_relaxed), iterations + 1);
+}
+
+// Exercise the 32 -> 64 Slot expansion under concurrent acquisition and
+// verify that returning threads unregister before putting slots up for reuse.
+TEST(ThreadSlotManagerTest, ExpansionAndCleanExitReusesSlots) {
+    ThreadSlotManager manager;
+    constexpr int kWorkers = 40; // strictly exceeds the initial 32 slots
+
+    const auto run_wave = [&](std::uint64_t epoch) -> std::size_t {
+        std::atomic<int> ready{0};
+        std::atomic<bool> allow_exit{false};
+        std::array<ThreadSlot*, kWorkers> observed{};
+        std::vector<std::thread> workers;
+        workers.reserve(kWorkers);
+
+        for (int i = 0; i < kWorkers; ++i) {
+            workers.emplace_back([&, i] {
+                ThreadSlot* slot = manager.getLocalSlot();
+                observed[i] = slot;
+                if (slot) slot->enter(epoch);
+                ready.fetch_add(1, std::memory_order_release);
+                while (!allow_exit.load(std::memory_order_acquire))
+                    std::this_thread::yield();
+                if (slot) slot->leave();
+                // The TLS proxy subsequently unregisters this slot and
+                // returns it to the reuse stack at thread exit.
+            });
+        }
+
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while (ready.load(std::memory_order_acquire) != kWorkers &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
+        }
+
+        const bool all_ready =
+            ready.load(std::memory_order_acquire) == kWorkers;
+        std::size_t capacity = 0;
+        if (all_ready) {
+            std::unordered_set<ThreadSlot*> unique;
+            for (ThreadSlot* slot : observed) {
+                EXPECT_NE(slot, nullptr);
+                if (slot) unique.insert(slot);
+            }
+            EXPECT_EQ(unique.size(), static_cast<std::size_t>(kWorkers));
+
+            std::size_t active = 0;
+            manager.forEachSlot([&](const ThreadSlot& slot) {
+                ++capacity;
+                if (ThreadSlot::isActive(slot.loadState()))
+                    ++active;
+            });
+            EXPECT_GE(capacity, static_cast<std::size_t>(kWorkers));
+            EXPECT_EQ(active, static_cast<std::size_t>(kWorkers));
+        }
+        EXPECT_TRUE(all_ready) << "all workers must acquire a unique live slot";
+
+        allow_exit.store(true, std::memory_order_release);
+        for (auto& worker : workers) worker.join();
+
+        std::size_t remaining_active = 0;
+        std::size_t still_registered = 0;
+        manager.forEachSlot([&](const ThreadSlot& slot) {
+            const auto state = slot.loadState();
+            if (ThreadSlot::isActive(state)) ++remaining_active;
+            if (ThreadSlot::isRegistered(state)) ++still_registered;
+        });
+        EXPECT_EQ(remaining_active, 0u);
+        EXPECT_EQ(still_registered, 0u)
+            << "TLS destruction must unregister returned slots";
+        return capacity;
+    };
+
+    const std::size_t first_capacity = run_wave(10);
+    const std::size_t second_capacity = run_wave(11);
+    EXPECT_EQ(second_capacity, first_capacity)
+        << "a second thread wave should reuse slots without expanding again";
+}
+
+// A missing leave() must not quietly return an active slot to a different
+// thread. Check this policy in both Debug and Release via a child process.
+TEST(ThreadSlotManagerDeathTest, ActiveSlotAtThreadExitFailsFast) {
+    ThreadSlotManager manager;
+    EXPECT_DEATH(
+        {
+            std::thread worker([&] {
+                ThreadSlot* slot = manager.getLocalSlot();
+                if (slot) slot->enter(7); // deliberately omit leave()
+            });
+            worker.join();
+        },
+        "active ThreadSlot at thread exit");
 }
 
 TEST_F(EBRManagerTest, ReuseStackPreservesExclusiveOwnership) {

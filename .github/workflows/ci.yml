@@ -106,6 +106,15 @@ jobs:
           --gtest_filter='Occ*:EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive:EBRManagerTest.ReuseStackPreservesExclusiveOwnership:EBRManagerTest.Nested*:GarbageCollectorTest.*'
           --gtest_repeat=50
 
+      # Slot expansion/reuse involves real thread churn. Run a targeted
+      # bounded repeat under TSan; death tests deliberately stay outside TSan.
+      - name: Test EBR ThreadSlot lifecycle (TSan)
+        run: >
+          timeout 120s setarch "$(uname -m)" -R
+          ./build-occ-tsan/tests/run_tests
+          --gtest_filter='ThreadSlotManagerTest.ExpansionAndCleanExitReusesSlots'
+          --gtest_repeat=10
+
       # Runs the TierAlloc-specific ownership-handoff tests under TSan.
       # Unlike the OccSTM filter above, these tests exercise TierAlloc itself.
       - name: Test TierAlloc ThreadHeapDepot
