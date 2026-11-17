@@ -9,6 +9,7 @@ add_executable(run_tests
     # TierAlloc/test_SizeClassConfig.cpp
     # TierAlloc/test_ThreadHeap.cpp
     TierAlloc/test_MediumArena.cpp
+    TierAlloc/test_ThreadHeapDepot.cpp
 
     EBRManager/test_EBRManager.cpp
 
