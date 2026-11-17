@@ -8,7 +8,8 @@ struct alignas(kCacheLineSize) ChunkHeader {
 public:
     enum class Type : uint8_t {
         SMALL = 0,
-        LARGE = 1
+        LARGE = 1,
+        MEDIUM = 2
     };
 
     Type    type = Type::SMALL;

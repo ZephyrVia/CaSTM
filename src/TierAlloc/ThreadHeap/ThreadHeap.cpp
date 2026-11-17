@@ -1,56 +1,77 @@
 #include "ThreadHeap/ThreadHeap.hpp"
 #include "ThreadHeap/Slab.hpp"
 #include "ThreadHeap/Span.hpp"
+#include "ThreadHeap/MediumArena.hpp"
 #include "CentralHeap/CentralHeap.hpp"
 #include "ThreadHeap/ChunkHeader.hpp"
 #include "common/SizeClassConfig.hpp"
 #include <cstdint>
+#include <limits>
+#include <cassert>
 
 
-[[nodiscard]] void* ThreadHeap::allocate(size_t nbytes) noexcept{
-    // 1.大对象路径
-    if(nbytes > SizeClassConfig::kMaxAlloc) [[unlikely]] {
-        size_t total_req_size = nbytes + sizeof(Span);
-        void* chunk_start = CentralHeap::GetInstance().allocateLarge(total_req_size);
-        if (!chunk_start) return nullptr;
-
-        Span* span = Span::CreateAt(chunk_start, total_req_size);
-        return span->payload();
+[[nodiscard]] void* ThreadHeap::allocate(size_t nbytes) noexcept {
+    // Small: existing per-thread size-class Slabs.
+    if (nbytes <= SizeClassConfig::kMaxAlloc) [[likely]] {
+        ThreadHeap& heap = local_();
+        uint32_t class_idx = SizeClassConfig::SizeToClass(nbytes);
+        return heap.pools_[class_idx].allocate();
     }
 
-    // 2.小对象路径
-    ThreadHeap& heap = local_();
-    uint32_t class_idx = SizeClassConfig::SizeToClass(nbytes);
-    return heap.pools_[class_idx].allocate();
+    // Medium: multiple allocations share one 2 MiB-aligned Chunk.
+    if (nbytes <= MediumArena::kMaxAlloc) {
+        return MediumArena::GetInstance().allocate(nbytes);
+    }
+
+    // Large: reserve a whole number of aligned 2 MiB Chunks so that
+    // SystemChunkAllocator's mmap and munmap extents always match.
+    constexpr size_t kRoundUp = kChunkSize - 1;
+    constexpr size_t kMax = std::numeric_limits<size_t>::max();
+    if (nbytes > kMax - sizeof(Span) - kRoundUp) {
+        return nullptr;
+    }
+    const size_t total = nbytes + sizeof(Span);
+    const size_t mapped_bytes = (total + kRoundUp) & kChunkMask;
+    if (mapped_bytes > kMax - kChunkAlignment) {
+        // SystemChunkAllocator over-allocates by one alignment unit.
+        return nullptr;
+    }
+
+    void* chunk_start = CentralHeap::GetInstance().allocateLarge(mapped_bytes);
+    if (!chunk_start) {
+        return nullptr;
+    }
+    Span* span = Span::CreateAt(chunk_start, mapped_bytes);
+    return span->payload();
 }
 
-void ThreadHeap::deallocate(void *ptr) noexcept{
-
-    if(!ptr) [[unlikely]] return;
+void ThreadHeap::deallocate(void* ptr) noexcept {
+    if (!ptr) [[unlikely]] {
+        return;
+    }
 
     ChunkHeader* header = ChunkHeader::Get(ptr);
-
-    // 1.小对象释放
-    if(header->type == ChunkHeader::Type::SMALL) [[likely]] {
+    if (header->type == ChunkHeader::Type::SMALL) [[likely]] {
         Slab* slab = static_cast<Slab*>(header);
         ThreadHeap& heap = local_();
-        
-        if(heap.isOwnSlab_(slab)) {
-            slab->owner()->deallocate(slab, ptr);
-            return;
-        }
-        else {
-            slab->freeRemote(ptr);
-            return;
-        }
-    }
-    // 2.大对象释放
-    else {
-        Span* span = static_cast<Span*>(header);
-        CentralHeap::GetInstance().freeLarge(span, span->size());
-    } 
-}
 
+        if (heap.isOwnSlab_(slab)) {
+            slab->owner()->deallocate(slab, ptr);
+        } else {
+            slab->freeRemote(ptr);
+        }
+        return;
+    }
+
+    if (header->type == ChunkHeader::Type::MEDIUM) {
+        MediumArena::GetInstance().deallocate(ptr);
+        return;
+    }
+
+    assert(header->type == ChunkHeader::Type::LARGE);
+    Span* span = static_cast<Span*>(header);
+    CentralHeap::GetInstance().freeLarge(span, span->size());
+}
 
 ThreadHeap& ThreadHeap::local_() noexcept {
     static thread_local ThreadHeap heap;

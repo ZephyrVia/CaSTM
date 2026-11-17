@@ -8,6 +8,7 @@ add_executable(run_tests
     # TierAlloc/test_SizeClassPool.cpp
     # TierAlloc/test_SizeClassConfig.cpp
     # TierAlloc/test_ThreadHeap.cpp
+    TierAlloc/test_MediumArena.cpp
 
     EBRManager/test_EBRManager.cpp
 
