@@ -2,6 +2,7 @@
 #include "ThreadHeap/Slab.hpp"
 #include "ThreadHeap/Span.hpp"
 #include "ThreadHeap/MediumArena.hpp"
+#include "ThreadHeap/ThreadHeapDepot.hpp"
 #include "CentralHeap/CentralHeap.hpp"
 #include "ThreadHeap/ChunkHeader.hpp"
 #include "common/SizeClassConfig.hpp"
@@ -13,9 +14,10 @@
 [[nodiscard]] void* ThreadHeap::allocate(size_t nbytes) noexcept {
     // Small: existing per-thread size-class Slabs.
     if (nbytes <= SizeClassConfig::kMaxAlloc) [[likely]] {
-        ThreadHeap& heap = local_();
+        ThreadHeap* heap = local_();
+        if (!heap) return nullptr;
         uint32_t class_idx = SizeClassConfig::SizeToClass(nbytes);
-        return heap.pools_[class_idx].allocate();
+        return heap->pools_[class_idx].allocate();
     }
 
     // Medium: multiple allocations share one 2 MiB-aligned Chunk.
@@ -53,9 +55,9 @@ void ThreadHeap::deallocate(void* ptr) noexcept {
     ChunkHeader* header = ChunkHeader::Get(ptr);
     if (header->type == ChunkHeader::Type::SMALL) [[likely]] {
         Slab* slab = static_cast<Slab*>(header);
-        ThreadHeap& heap = local_();
+        ThreadHeap* heap = local_();
 
-        if (heap.isOwnSlab_(slab)) {
+        if (heap && heap->isOwnSlab_(slab)) {
             slab->owner()->deallocate(slab, ptr);
         } else {
             slab->freeRemote(ptr);
@@ -73,9 +75,10 @@ void ThreadHeap::deallocate(void* ptr) noexcept {
     CentralHeap::GetInstance().freeLarge(span, span->size());
 }
 
-ThreadHeap& ThreadHeap::local_() noexcept {
-    static thread_local ThreadHeap heap;
-    return heap;
+ThreadHeap* ThreadHeap::local_() noexcept {
+    // TLS owns only an exclusive-use lease, not the Slabs' backing memory.
+    static thread_local ThreadHeapLease lease;
+    return lease.get();
 }
 
 

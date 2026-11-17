@@ -10,7 +10,9 @@ void canaryChunkRegister_(Slab* meta);
 #endif
 
 SizeClassPool::~SizeClassPool() {
-    // 线程退出时绝不归还 chunk（含活块归还是并发踩踏的根因）：
+    // Defensive fallback if this Pool is ever explicitly destroyed.
+    // With ThreadHeapDepot normal TLS exit only parks the heap, so this
+    // destructor does not run at thread exit. Never return live Slabs.
     // 本线程 slab 中的对象可能仍被全局引用——共享 TMVar 版本链上的
     // VersionNode、EBR 全局垃圾链表里的 GarbageNode 等。CentralHeap
     // 复用这些 chunk 后，新分配会直接覆盖活对象（已由 TIERALLOC_CANARY
