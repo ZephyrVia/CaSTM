@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -16,6 +17,13 @@
 
 #include "EBRManager/guard.hpp"
 #include "OccSTM/Transaction.hpp"
+
+#if __has_include("ThreadHeap/ThreadHeapDepot.hpp")
+#include "ThreadHeap/ThreadHeapDepot.hpp"
+#define CASTM_SOAK_HAS_DEPOT 1
+#else
+#define CASTM_SOAK_HAS_DEPOT 0
+#endif
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -111,7 +119,8 @@ public:
                    "created,destroyed,live,transactions,writes,retired,reclaimed,pending,"
                    "teardown_destroyed,unpublished,errors,batches,threads_started,"
                    "slow_cycles,protected_checks,release_checks,quiescent,checksum,"
-                   "expected_checksum,retained,check_ok,recovery_ms\n";
+                   "expected_checksum,retained,check_ok,recovery_ms,"
+                   "depot_created,depot_leased,depot_idle,depot_reuse\n";
     }
     void sample(const std::string& phase, const std::string& event, Counters& c,
                 bool quiescent = false, uint64_t checksum = 0, uint64_t retained = 0,
@@ -139,6 +148,13 @@ public:
         if (quiescent) stream_ << retained;
         stream_ << ',' << check_ok << ',';
         if (recovery_ms >= 0) stream_ << recovery_ms;
+#if CASTM_SOAK_HAS_DEPOT
+        const auto depot = ThreadHeapDepot::GetInstance().stats();
+        stream_ << ',' << depot.created_heaps << ',' << depot.leased_heaps
+                << ',' << depot.idle_heaps << ',' << depot.reuse_events;
+#else
+        stream_ << ",,,,";
+#endif
         stream_ << '\n';
         stream_.flush();
         if (!stream_) throw std::runtime_error("samples write failed");
@@ -396,8 +412,13 @@ int main(int argc, char** argv) {
         bool passed = true;
         const auto start = Clock::now();
         std::vector<std::string> phases;
-        for (const auto& name : {"steady", "slow_reader", "thread_churn"})
+        const bool churn_only =
+            std::getenv("CASTM_SOAK_CHURN_ONLY") != nullptr &&
+            std::string(std::getenv("CASTM_SOAK_CHURN_ONLY")) == "1";
+        for (const auto& name : {"steady", "slow_reader", "thread_churn"}) {
+            if (churn_only && std::string(name) != "thread_churn") continue;
             phases.push_back(runPhase(name, o, recorder, passed));
+        }
         std::ofstream result(o.result);
         if (!result) throw std::runtime_error("cannot open result output");
         result << "{\"schema_version\":1,\"allocator\":" << quote(STM::Memory::configuredMode())

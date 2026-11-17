@@ -1,0 +1,72 @@
+name: TierAlloc ThreadHeapDepot churn A/B
+on:
+  push:
+    branches:
+      - codex/tieralloc-churn-ab-20261117
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  churn:
+    name: OccSTM/EBR 90s thread churn — baseline vs depot
+    runs-on: ubuntu-22.04
+    timeout-minutes: 18
+    steps:
+      - name: Check out depot candidate
+        uses: actions/checkout@v4
+        with:
+          path: candidate
+          ref: codex/tieralloc-threadheap-depot-20261117
+      - name: Check out pre-depot baseline
+        uses: actions/checkout@v4
+        with:
+          path: baseline
+          ref: codex/tieralloc-medium-page-run-20261117
+      - name: Copy identical instrumentation-only harness to both revisions
+        run: |
+          cp candidate/tests/validation/occ_memory_soak.cpp baseline/tests/validation/occ_memory_soak.cpp
+          git -C baseline rev-parse HEAD
+          git -C candidate rev-parse HEAD
+      - name: Configure baseline and candidate
+        run: |
+          for v in baseline candidate; do
+            cmake -S "$v" -B "$v/build-ab" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSTM_ALLOCATOR_MODE=native \
+              -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=0 -DSTM_ALLOCATOR_MODE=-1"
+          done
+      - name: Build identical workloads with their own allocator versions
+        run: |
+          cmake --build baseline/build-ab --target occ_memory_soak --parallel 2
+          cmake --build candidate/build-ab --target occ_memory_soak --parallel 2
+      - name: Record inputs and execute identical churn workloads
+        env:
+          CASTM_SOAK_CHURN_ONLY: "1"
+        run: |
+          mkdir -p results
+          git -C baseline rev-parse HEAD > results/baseline-commit.txt
+          git -C candidate rev-parse HEAD > results/depot-commit.txt
+          sha256sum baseline/build-ab/benchmarks/occ_memory_soak candidate/build-ab/benchmarks/occ_memory_soak > results/binaries-sha256.txt
+          for v in baseline depot; do
+            if [ "$v" = baseline ]; then bin=baseline/build-ab/benchmarks/occ_memory_soak; else bin=candidate/build-ab/benchmarks/occ_memory_soak; fi
+            echo "RUNNING $v: $(date -u +%FT%TZ)"
+            "$bin" \
+              --samples "results/$v.csv" --result "results/$v.json" \
+              --phase-seconds 90 --threads 20 --sample-ms 500 \
+              --rate-per-worker 1000 --hold-ms 200 --recovery-ms 200 \
+              --batch-ms 1500 --batch-transactions 2000 --settle-ms 100 \
+              --rss-limit-mib 1024 --vms-limit-mib 8192
+            echo "COMPLETED $v: $(date -u +%FT%TZ)"
+          done
+      - name: Verify lifetime counters and compare VmSize/RSS
+        run: python3 candidate/scripts/analyze_threadheap_churn_ab.py results
+      - name: Upload raw measurements and summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: castm-threadheap-churn-ab
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
