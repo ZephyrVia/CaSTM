@@ -48,6 +48,16 @@ Application
   释放。默认 OccSTM 的版本节点走 TierAlloc，WwSTM 的 VersionNode/WriteRecord
   走系统堆；benchmark 可切换这些关键路径。
 
+### 主线增量改造：TierAlloc 分配与线程堆复用（2026-11-17）
+
+- 小对象（≤256 KiB）：仍采用线程本地 SizeClassPool / Slab，保持原有快速路径。
+- 中等对象（>256 KiB～2044 KiB）：进程级 MediumArena，多个分配共享 2 MiB Chunk，以 4 KiB 页连续区间管理。
+- 更大对象：使用独立 Span 和按 2 MiB 向上对齐的底层映射，记录真实映射尺寸。
+- **ThreadHeapDepot + ThreadHeapLease**：线程退出时不销毁含活对象的 ThreadHeap；进程级 Depot 暂存完整线程堆，新线程可重新认领，并保留 Slab 的原有 owner 地址与远程释放链表。
+
+详细设计见 [线程堆所有权转移](docs/architecture/threadheap-depot.md)；90 秒 A/B 和 10 分钟真实事务/EBR 回收验收见 [TierAlloc 收尾报告](docs/performance/tieralloc-depot-2026-11-17.md)。此前 60 分钟长跑来自旧源码，不可与本次新架构的指标直接混同；`v0.2.0-prototype` 标签保持冻结。
+
+
 ## WwSTM 的提交与回收
 
 共享变量只有一个 tagged head：
