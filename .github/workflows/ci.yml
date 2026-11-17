@@ -103,7 +103,7 @@ jobs:
         run: >
           timeout 120s setarch "$(uname -m)" -R
           ./build-occ-tsan/tests/run_tests
-          --gtest_filter='Occ*:EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive:EBRManagerTest.ReuseStackPreservesExclusiveOwnership'
+          --gtest_filter='Occ*:EBRManagerTest.ConcurrentEpochRecyclingKeepsReadersAlive:EBRManagerTest.ReuseStackPreservesExclusiveOwnership:EBRManagerTest.Nested*'
           --gtest_repeat=50
 
       # Runs the TierAlloc-specific ownership-handoff tests under TSan.

@@ -54,7 +54,7 @@ void ThreadSlot::enter(uint64_t current_epoch) noexcept {
         uint64_t new_state = pack_(current_epoch, true, true); 
 
         if (state_.compare_exchange_weak(old_state, new_state,
-                                          std::memory_order_release,
+                                          std::memory_order_seq_cst,
                                           std::memory_order_relaxed)) {
             return;
         }
@@ -91,7 +91,7 @@ void ThreadSlot::setEpoch(uint64_t newEpoch) noexcept {
         bool active = isActive(old_state);
         uint64_t new_state = pack_(newEpoch, active, true);
         if (state_.compare_exchange_weak(old_state, new_state,
-                                          std::memory_order_release,
+                                          std::memory_order_seq_cst,
                                           std::memory_order_relaxed)) {
             return;
         }
@@ -99,7 +99,7 @@ void ThreadSlot::setEpoch(uint64_t newEpoch) noexcept {
 }
 
 uint64_t ThreadSlot::loadState() const noexcept {
-    return state_.load(std::memory_order_acquire);
+    return state_.load(std::memory_order_seq_cst);
 }
 
 // --- 静态辅助函数实现 ---

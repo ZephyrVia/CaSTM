@@ -174,6 +174,115 @@ TEST_F(EBRManagerTest, ConcurrentEpochRecyclingKeepsReadersAlive) {
     EXPECT_EQ(destroyed.load(), iterations + 1);
 }
 
+// Inner Guard destruction must not mark a still-active outer reader
+// quiescent. The old code allowed deletion while the outer guard remained.
+TEST_F(EBRManagerTest, NestedGuardKeepsOuterReaderActive) {
+    EBRManager* mgr = EBRManager::instance();
+    std::atomic<int> destroyed{0};
+    EpochProbe* victim = new EpochProbe(destroyed);
+
+    PhaseGate nested_guard_finished;
+    PhaseGate release_outer_guard;
+
+    std::thread reader([&] {
+        ebr::Guard outer(*mgr);
+        {
+            ebr::Guard inner(*mgr);
+        }
+        nested_guard_finished.signal();
+        release_outer_guard.wait_until(1);
+    });
+    nested_guard_finished.wait_until(1);
+
+    {
+        ebr::Guard writer(*mgr);
+        mgr->retire(victim);
+    }
+
+    for (int i = 0; i < 16; ++i) {
+        ebr::Guard advancer(*mgr);
+    }
+    EXPECT_EQ(destroyed.load(std::memory_order_relaxed), 0)
+        << "the inner Guard must not remove the outer Guard's EBR protection";
+
+    release_outer_guard.signal();
+    reader.join();
+
+    for (int i = 0; i < 16; ++i) {
+        ebr::Guard advancer(*mgr);
+    }
+    EXPECT_EQ(destroyed.load(std::memory_order_relaxed), 1);
+}
+
+// Stress epoch registration/revalidation with real readers that retain
+// a published pointer across an inner Guard's destruction.
+TEST_F(EBRManagerTest, NestedReadersWithConcurrentRetirement) {
+    struct Probe {
+        const uint64_t value;
+        const uint64_t inverted;
+        std::atomic<int>& destroyed;
+        Probe(uint64_t v, std::atomic<int>& d)
+            : value(v), inverted(~v), destroyed(d) {}
+        ~Probe() { destroyed.fetch_add(1, std::memory_order_relaxed); }
+    };
+    constexpr int iterations = 1200;
+    EBRManager* mgr = EBRManager::instance();
+    std::atomic<int> destroyed{0};
+    std::atomic<int> bad_reads{0};
+    std::atomic<Probe*> shared{new Probe(0, destroyed)};
+    std::atomic<bool> go{false};
+
+    std::vector<std::thread> workers;
+    for (int reader = 0; reader < 4; ++reader) {
+        workers.emplace_back([&] {
+            while (!go.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            for (int n = 0; n < iterations; ++n) {
+                ebr::Guard outer(*mgr);
+                const Probe* held = shared.load(std::memory_order_acquire);
+                {
+                    ebr::Guard inner(*mgr);
+                    if ((n & 7) == 0) std::this_thread::yield();
+                }
+                const auto value = held->value;
+                if (held->inverted != ~value)
+                    bad_reads.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+    workers.emplace_back([&] {
+        while (!go.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        for (int n = 1; n <= iterations; ++n) {
+            ebr::Guard guard(*mgr);
+            Probe* old = shared.exchange(new Probe(n, destroyed),
+                                         std::memory_order_acq_rel);
+            mgr->retire(old);
+        }
+    });
+    for (int advancer = 0; advancer < 2; ++advancer) {
+        workers.emplace_back([&] {
+            while (!go.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            for (int n = 0; n < iterations; ++n) {
+                ebr::Guard guard(*mgr);
+            }
+        });
+    }
+
+    go.store(true, std::memory_order_release);
+    for (auto& worker : workers) worker.join();
+    {
+        ebr::Guard guard(*mgr);
+        mgr->retire(shared.exchange(nullptr, std::memory_order_acq_rel));
+    }
+    for (int i = 0; i < 32; ++i) {
+        ebr::Guard guard(*mgr);
+    }
+    EXPECT_EQ(bad_reads.load(std::memory_order_relaxed), 0);
+    EXPECT_EQ(destroyed.load(std::memory_order_relaxed), iterations + 1);
+}
+
 TEST_F(EBRManagerTest, ReuseStackPreservesExclusiveOwnership) {
     struct Node {
         Node* next = nullptr;
