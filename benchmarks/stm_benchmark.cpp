@@ -286,7 +286,19 @@ public:
                         context.transaction.store(*variables_[operation.key], value + 1);
                 }
             } catch (const STM::Occ::RetryException&) {
-                return AbortCause::SnapshotUnavailable;
+                // Versioned MVCC read barriers can retry on a held lock or
+                // a changing stripe, not only on trimmed history. Attribute
+                // aborts using the actual per-transaction diagnostic.
+                switch (context.transaction.lastAbortReason()) {
+                case STM::Occ::AbortReason::SnapshotUnavailable:
+                    return AbortCause::SnapshotUnavailable;
+                case STM::Occ::AbortReason::ReadLocked:
+                    return AbortCause::ReadLocked;
+                case STM::Occ::AbortReason::ReadVersionChanged:
+                    return AbortCause::ReadChanged;
+                default:
+                    throw std::logic_error("OccSTM read retry without an abort reason");
+                }
             }
             if (context.transaction.commit()) return AbortCause::None;
             switch (context.transaction.lastAbortReason()) {

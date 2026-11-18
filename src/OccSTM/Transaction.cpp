@@ -11,76 +11,119 @@ Transaction::Transaction(TransactionDescriptor* desc) : desc_(desc) {}
 Transaction::~Transaction() {}
 
 
+namespace {
+
+// RAII for all stripes acquired by one updating transaction. On failure,
+// restore each original version; on success, publish WV at every unlock.
+class WriteLockScope {
+public:
+    explicit WriteLockScope(std::vector<size_t>& indices) noexcept
+        : indices_(indices) {}
+
+    ~WriteLockScope() noexcept {
+        auto& table = StripedLockTable::instance();
+        for (auto it = indices_.rbegin(); it != indices_.rend(); ++it) {
+            if (committed_) table.unlockByIndex(*it, write_version_);
+            else table.unlockByIndex(*it);
+        }
+        indices_.clear();
+    }
+
+    void markCommitted(uint64_t write_version) noexcept {
+        write_version_ = write_version;
+        committed_ = true;
+    }
+
+private:
+    std::vector<size_t>& indices_;
+    uint64_t write_version_ = 0;
+    bool committed_ = false;
+};
+
+} // namespace
+
 bool Transaction::commit() {
     auto& wset = desc_->writeSet();
-    auto& rset = desc_->readSet();
 
-    // 只读事务
-    if (desc_->writeSet().empty()) {
+    // Every load was protected by a versioned read barrier. A fixed RV plus
+    // immutable history is a consistent read-only snapshot: no commit-time
+    // ReadSet validation is needed in that case.
+    if (wset.empty()) {
         desc_->reset();
         return true;
     }
 
+    // lockWriteSet prepares and sorts the index vector *before* acquiring
+    // locks; only non-throwing atomic lock operations follow.
     lockWriteSet();
-    uint64_t wv = GlobalClock::tick();
+    {
+        WriteLockScope locks(desc_->lockSet());
 
-    if(!validateReadSet()) {
-        unlockWriteSet();
-        return false;
+        // TL2: draw a distinct write timestamp *after* acquiring all
+        // affected stripes. Disjoint transactions may then publish
+        // concurrently and even complete in reverse WV order.
+        const uint64_t wv = GlobalClock::tick();
+        if (!validateReadSet()) {
+            return false;
+        }
+
+        // Point of no abort: all potentially throwing draft allocations
+        // were performed by store(). Only noexcept publishers run here.
+        for (auto& e : wset) {
+            e.committer(e.tmvar_addr, e.new_node, wv);
+            e.new_node = nullptr;
+        }
+
+        // Pruning is optional, non-throwing maintenance. It prepares EBR
+        // metadata before severing any history link, while the writer still
+        // owns its stripes.
+        for (auto& e : wset) {
+            if (e.pruner) e.pruner(e.tmvar_addr);
+        }
+
+        // Release store of (WV, unlocked) occurs at scope exit, after all
+        // heads and their history links have been published.
+        locks.markCommitted(wv);
     }
 
-    for (auto& entry : wset) {
-        entry.committer(entry.tmvar_addr, entry.new_node, wv);
-        entry.new_node = nullptr;
-    }
-
-    unlockWriteSet();
-
-    desc_->commitAllocations(); 
+    desc_->commitAllocations();
     desc_->reset();
     return true;
 }
 
 bool Transaction::validateReadSet() {
-    uint64_t rv = desc_->getReadVersion();
-    auto& lock_table = StripedLockTable::instance();
-    auto& locks = desc_->lockSet(); // 这里面存的是 (void*)index
+    const uint64_t rv = desc_->getReadVersion();
+    auto& table = StripedLockTable::instance();
+    const auto& own_stripes = desc_->lockSet(); // sorted size_t indices
 
-    for(const auto& entry : desc_->readSet()) {
-        // 前置锁检查
-        if(lock_table.is_locked(entry.tmvar_addr)){
-            // 必须先计算出地址对应的索引
-            size_t idx = lock_table.getStripeIndex(entry.tmvar_addr);
-            void* idx_ptr = reinterpret_cast<void*>(idx);
+    for (const auto& entry : desc_->readSet()) {
+        const size_t stripe = table.getStripeIndex(entry.tmvar_addr);
+        const bool mine = std::binary_search(
+            own_stripes.begin(), own_stripes.end(), stripe);
 
-            // 然后在 locks 列表中查找这个索引
-            bool locked_by_me = std::binary_search(locks.begin(), locks.end(), idx_ptr);
-            
-            // 如果被锁了且不是我锁的 -> 冲突
-            if(!locked_by_me) {
-                last_abort_reason_ = AbortReason::ReadLocked;
-                return false;
-            }
+        const uint64_t before = table.loadStateByIndex(stripe);
+        if (StripedLockTable::isLocked(before) && !mine) {
+            last_abort_reason_ = AbortReason::ReadLocked;
+            return false;
         }
-
-        // 身份 + 时间验证
-        if(!entry.validator(entry.tmvar_addr, entry.expected_head, rv)) {
+        if (StripedLockTable::version(before) > rv) {
             last_abort_reason_ = AbortReason::ReadVersionChanged;
             return false;
         }
 
-        // lfence：防止后面的锁检查被排到前面
-        std::atomic_thread_fence(std::memory_order_acquire);
+        // Updating transactions use intentionally conservative OCC:
+        // historical reads are fine, but a write based on any non-head
+        // value (or a head already changed) is rejected.
+        if (!entry.validator(entry.tmvar_addr, entry.expected_head, rv)) {
+            last_abort_reason_ = AbortReason::ReadVersionChanged;
+            return false;
+        }
 
-        if(lock_table.is_locked(entry.tmvar_addr)){
-            size_t idx = lock_table.getStripeIndex(entry.tmvar_addr);
-            void* idx_ptr = reinterpret_cast<void*>(idx);
-
-            bool locked_by_me = std::binary_search(locks.begin(), locks.end(), idx_ptr);
-            if(!locked_by_me) {
-                last_abort_reason_ = AbortReason::ReadLocked;
-                return false;
-            }
+        std::atomic_thread_fence(std::memory_order_acq_rel);
+        const uint64_t after = table.loadStateByIndex(stripe);
+        if (before != after || (StripedLockTable::isLocked(after) && !mine)) {
+            last_abort_reason_ = AbortReason::ReadLocked;
+            return false;
         }
     }
     return true;
@@ -88,40 +131,21 @@ bool Transaction::validateReadSet() {
 
 
 void Transaction::lockWriteSet() {
-    auto& wset = desc_->writeSet();
-    auto& locks = desc_->lockSet();
-    
-    locks.clear();
-    
-    auto& lock_table = StripedLockTable::instance();
-    
-    // 1. 直接填入 locks
-    for(auto& entry : wset) {
-        size_t idx = lock_table.getStripeIndex(entry.tmvar_addr);
-        locks.push_back(reinterpret_cast<void*>(idx));
-    }
+    auto& stripes = desc_->lockSet();
+    stripes.clear();
 
-    // 2. 在 locks 上排序去重
-    std::sort(locks.begin(), locks.end());
-    auto last = std::unique(locks.begin(), locks.end());
-    locks.erase(last, locks.end());
-
-    // 3. 遍历加锁
-    for(void* ptr_idx : locks) {
-        size_t idx = reinterpret_cast<size_t>(ptr_idx);
-        lock_table.lockByIndex(idx);
+    auto& table = StripedLockTable::instance();
+    // All potentially allocating operations happen before acquiring locks.
+    for (const auto& entry : desc_->writeSet()) {
+        stripes.push_back(table.getStripeIndex(entry.tmvar_addr));
     }
-}
+    std::sort(stripes.begin(), stripes.end());
+    stripes.erase(std::unique(stripes.begin(), stripes.end()), stripes.end());
 
-void Transaction::unlockWriteSet() {
-    auto& locks = desc_->lockSet();
-    auto& lock_table = StripedLockTable::instance();
-    
-    for (auto it = locks.rbegin(); it != locks.rend(); ++it) {
-        size_t idx = reinterpret_cast<size_t>(*it);
-        lock_table.unlockByIndex(idx);
+    // Ascending order prevents deadlock among multi-stripe writers.
+    for (const size_t stripe : stripes) {
+        table.lockByIndex(stripe);
     }
-    locks.clear();
 }
 
 } // namespace Occ

@@ -29,6 +29,11 @@ public:
     void retire(T* ptr);
     void retire(void* ptr, void (*deleter)(void*));
 
+    // For non-throwing post-commit maintenance: caller must allocate the
+    // GarbageNode ledger before unlinking the protected object. Once
+    // detached, enqueueing the prepared ledger performs no heap allocation.
+    void retirePrepared(GarbageNode* prepared) noexcept;
+
 public:
     static constexpr size_t kNumEpochLists = 3;
 
