@@ -313,3 +313,104 @@ TEST(OccAtomicVisibilityTest, ReadOnlyRejectsPartialMultiVariableCommit) {
         EXPECT_TRUE(tx.commit());
     }
 }
+
+
+TEST(OccAtomicVisibilityTest, RetainedHistoricalSnapshotAcrossMultiVarCommit) {
+    TMVar<int> a(0), b(0);
+    ebr::Guard guard(*EBRManager::instance());
+    TransactionDescriptor reader_desc, writer_desc;
+    Transaction reader(&reader_desc), writer(&writer_desc);
+
+    reader.begin();
+    EXPECT_EQ(reader.load(a), 0);
+
+    writer.begin();
+    writer.store(a, 1);
+    writer.store(b, 1);
+    ASSERT_TRUE(writer.commit());
+
+    // The same RV must still select both OLD nodes even though the
+    // completed write transaction has two newer heads.
+    EXPECT_EQ(reader.load(b), 0);
+    EXPECT_TRUE(reader.commit());
+
+    reader.begin();
+    EXPECT_EQ(reader.load(a), 1);
+    EXPECT_EQ(reader.load(b), 1);
+    EXPECT_TRUE(reader.commit());
+}
+
+TEST(OccAtomicVisibilityTest, DisjointWriterProgressWhileFirstIsPaused) {
+    TMVar<int> a(0), b(0), independent(0);
+    auto& table = StripedLockTable::instance();
+    ASSERT_NE(table.getStripeIndex(&a), table.getStripeIndex(&b));
+    ASSERT_NE(table.getStripeIndex(&a), table.getStripeIndex(&independent));
+    ASSERT_NE(table.getStripeIndex(&b), table.getStripeIndex(&independent));
+
+    PartialCommitPause pause;
+    g_partial_commit_pause.store(&pause, std::memory_order_release);
+    std::atomic<bool> first_committed{false}, other_finished{false};
+    std::atomic<bool> other_committed{false};
+
+    std::thread first([&] {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor desc;
+        Transaction tx(&desc);
+        tx.begin();
+        tx.store(a, 1);
+        tx.store(b, 1);
+        desc.writeSet().front().committer = &pauseAfterFirstVersion;
+        first_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!pause.first_published.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    const bool paused = pause.first_published.load(std::memory_order_acquire);
+
+    bool finished_before_first_unlock = false;
+    if (paused) {
+        std::thread other([&] {
+            ebr::Guard guard(*EBRManager::instance());
+            TransactionDescriptor desc;
+            Transaction tx(&desc);
+            tx.begin();
+            tx.store(independent, 7);
+            other_committed.store(tx.commit(), std::memory_order_release);
+            other_finished.store(true, std::memory_order_release);
+        });
+
+        const auto progress_deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        while (!other_finished.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < progress_deadline)
+            std::this_thread::yield();
+        finished_before_first_unlock =
+            other_finished.load(std::memory_order_acquire);
+
+        pause.allow_second.store(true, std::memory_order_release);
+        other.join();
+    } else {
+        pause.allow_second.store(true, std::memory_order_release);
+    }
+
+    first.join();
+    g_partial_commit_pause.store(nullptr, std::memory_order_release);
+    ASSERT_TRUE(paused);
+    EXPECT_TRUE(finished_before_first_unlock)
+        << "an independent stripe writer should commit while another "
+           "multi-var writer has paused with its stripes locked";
+    EXPECT_TRUE(first_committed.load(std::memory_order_acquire));
+    EXPECT_TRUE(other_committed.load(std::memory_order_acquire));
+
+    ebr::Guard guard(*EBRManager::instance());
+    TransactionDescriptor desc;
+    Transaction tx(&desc);
+    tx.begin();
+    EXPECT_EQ(tx.load(a), 1);
+    EXPECT_EQ(tx.load(b), 1);
+    EXPECT_EQ(tx.load(independent), 7);
+    EXPECT_TRUE(tx.commit());
+}
