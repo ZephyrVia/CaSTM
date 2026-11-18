@@ -233,7 +233,12 @@ TEST(OccReclamationTest, ConcurrentSnapshotTraversalAndPruning) {
                     if (transaction.load(var) != 0) ++bad_values;
                     if (!transaction.commit()) ++bad_values;
                 } catch (const RetryException&) {
-                    if (transaction.lastAbortReason() != AbortReason::SnapshotUnavailable) ++bad_values;
+                    // The TL2 read barrier can also reject a concurrent publisher
+                    // before the requested historical snapshot is located.
+                    const auto why = transaction.lastAbortReason();
+                    if (why != AbortReason::SnapshotUnavailable &&
+                        why != AbortReason::ReadLocked &&
+                        why != AbortReason::ReadVersionChanged) ++bad_values;
                 }
                 attempts.fetch_add(1, std::memory_order_relaxed);
             }
