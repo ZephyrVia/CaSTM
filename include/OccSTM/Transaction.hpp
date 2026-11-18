@@ -52,6 +52,7 @@ private:
     bool validateReadSet();
     void lockWriteSet();
     void unlockWriteSet();
+    void unlockCommittedWriteSet(uint64_t write_version);
 
 private:
     TransactionDescriptor* desc_;
@@ -63,34 +64,44 @@ template<typename T>
 T Transaction::load(TMVar<T>& var) {
     using Node = typename TMVar<T>::Node;
 
-    // 1. Read-Your-Own-Writes
+    // Reads of our own unpublished drafts need no shared memory barrier.
     auto& wset = desc_->writeSet();
-    if (!wset.empty()) {
-        for(auto it = wset.rbegin(); it != wset.rend(); ++it) {
-            if(it->tmvar_addr == &var) return static_cast<Node*>(it->new_node)->payload;
-        }
+    for (auto it = wset.rbegin(); it != wset.rend(); ++it) {
+        if (it->tmvar_addr == &var)
+            return static_cast<Node*>(it->new_node)->payload;
     }
 
-    auto* curr = var.loadHead();
+    auto& locks = StripedLockTable::instance();
+    const size_t stripe = locks.getStripeIndex(&var);
+    const uint64_t before = locks.loadStateByIndex(stripe);
+    if (StripedLockTable::isLocked(before)) {
+        last_abort_reason_ = AbortReason::ReadLocked;
+        throw RetryException();
+    }
 
-        
-    uint64_t rv = desc_->getReadVersion();
-
-    // 遍历链表找 <= RV 的版本
-    while (curr != nullptr && curr->write_ts > rv) {
-        // A concurrent writer may detach this edge. Seeing nullptr means
-        // retry; a previously loaded old pointer remains protected by EBR.
+    Node* curr = var.loadHead();
+    const uint64_t rv = desc_->getReadVersion();
+    while (curr && curr->write_ts > rv)
         curr = curr->prev.load(std::memory_order_acquire);
-    }
-    
-    if(curr == nullptr) {
+    if (!curr) {
         last_abort_reason_ = AbortReason::SnapshotUnavailable;
-        throw RetryException();   
+        throw RetryException();
     }
 
-    desc_->addToReadSet(&var, curr, TMVar<T>::validate);
+    // Under EBR, the immutable payload is safe to copy. The post-read
+    // barrier rejects any concurrent commit affecting this stripe.
+    T value = curr->payload;
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    const uint64_t after = locks.loadStateByIndex(stripe);
+    if (before != after || StripedLockTable::isLocked(after)) {
+        last_abort_reason_ = AbortReason::ReadLocked;
+        throw RetryException();
+    }
 
-    return curr->payload;
+    // Unlike pure TL2, historical reads (selected.write_ts <= RV) are legal.
+    // Update transactions revalidate dependencies more strictly at commit.
+    desc_->addToReadSet(&var, curr, TMVar<T>::validate);
+    return value;
 }
 
 template <typename T>
@@ -98,7 +109,8 @@ void Transaction::store(TMVar<T>& var, const T& val) {
     using Node = typename TMVar<T>::Node;
     Node* node = new Node(0, nullptr, val);
 
-    desc_->addToWriteSet(&var, node, TMVar<T>::committer, TMVar<T>::deleter);
+    desc_->addToWriteSet(&var, node, TMVar<T>::committer,
+                         TMVar<T>::deleter, TMVar<T>::pruneNoThrow);
 }
 
 

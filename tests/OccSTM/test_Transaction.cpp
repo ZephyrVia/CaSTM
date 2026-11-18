@@ -228,7 +228,7 @@ std::atomic<PartialCommitPause*> g_partial_commit_pause{nullptr};
 // Invoked instead of the first WriteSet committer. This hook leaves the
 // first version visible while the same transaction's second variable has
 // not yet been updated, reproducing an otherwise rare publication window.
-void pauseAfterFirstVersion(void* tmvar, void* node, uint64_t wv) {
+void pauseAfterFirstVersion(void* tmvar, void* node, uint64_t wv) noexcept {
     TMVar<int>::committer(tmvar, node, wv);
     PartialCommitPause* pause =
         g_partial_commit_pause.load(std::memory_order_acquire);

@@ -29,6 +29,9 @@ public:
     void retire(T* ptr);
     void retire(void* ptr, void (*deleter)(void*));
 
+    // Enqueue an already allocated retirement record without allocation.
+    void retirePrepared(GarbageNode* record) noexcept;
+
 public:
     static constexpr size_t kNumEpochLists = 3;
 

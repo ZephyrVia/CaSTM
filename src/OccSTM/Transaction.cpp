@@ -1,126 +1,124 @@
 #include "OccSTM/Transaction.hpp"
 #include "OccSTM/StripedLockTable.hpp"
+
 #include <algorithm>
+#include <atomic>
 #include <vector>
 
 namespace STM {
 namespace Occ {
 
-// 构造函数
 Transaction::Transaction(TransactionDescriptor* desc) : desc_(desc) {}
 Transaction::~Transaction() {}
 
-
 bool Transaction::commit() {
     auto& wset = desc_->writeSet();
-    auto& rset = desc_->readSet();
 
-    // 只读事务
-    if (desc_->writeSet().empty()) {
+    if (wset.empty()) {
+        // The per-read versioned lock protocol protects this fixed-RV
+        // historical snapshot, so no commit-time validation is needed.
         desc_->reset();
         return true;
     }
 
+    // All potential vector allocations and sort work occur before the
+    // first write stripe is acquired.
     lockWriteSet();
-    uint64_t wv = GlobalClock::tick();
+    // WV is allocated ONLY AFTER every write stripe is locked.
+    const uint64_t wv = GlobalClock::tick();
 
-    if(!validateReadSet()) {
+    if (!validateReadSet()) {
         unlockWriteSet();
         return false;
     }
 
+    // Publishing must not fail after the first head is updated.
+    // Typed committers are noexcept and only link preallocated nodes.
     for (auto& entry : wset) {
         entry.committer(entry.tmvar_addr, entry.new_node, wv);
         entry.new_node = nullptr;
     }
 
-    unlockWriteSet();
+    // Defer EBR enrollment until ALL heads have been published. Pruning
+    // reserves retirement records first; OOM leaves a longer version chain.
+    for (auto& entry : wset) {
+        if (entry.pruner) entry.pruner(entry.tmvar_addr);
+    }
 
-    desc_->commitAllocations(); 
+    // A writer's stripe unlock publishes (WV, unlocked) atomically.
+    // Never release any write stripe until all heads are published.
+    unlockCommittedWriteSet(wv);
+    desc_->commitAllocations();
     desc_->reset();
     return true;
 }
 
 bool Transaction::validateReadSet() {
-    uint64_t rv = desc_->getReadVersion();
+    const uint64_t rv = desc_->getReadVersion();
     auto& lock_table = StripedLockTable::instance();
-    auto& locks = desc_->lockSet(); // 这里面存的是 (void*)index
+    const auto& owned = desc_->lockSet();
 
-    for(const auto& entry : desc_->readSet()) {
-        // 前置锁检查
-        if(lock_table.is_locked(entry.tmvar_addr)){
-            // 必须先计算出地址对应的索引
-            size_t idx = lock_table.getStripeIndex(entry.tmvar_addr);
-            void* idx_ptr = reinterpret_cast<void*>(idx);
+    for (const auto& entry : desc_->readSet()) {
+        const size_t index = lock_table.getStripeIndex(entry.tmvar_addr);
+        const bool mine = std::binary_search(owned.begin(), owned.end(), index);
+        const uint64_t before = lock_table.loadStateByIndex(index);
 
-            // 然后在 locks 列表中查找这个索引
-            bool locked_by_me = std::binary_search(locks.begin(), locks.end(), idx_ptr);
-            
-            // 如果被锁了且不是我锁的 -> 冲突
-            if(!locked_by_me) {
-                last_abort_reason_ = AbortReason::ReadLocked;
-                return false;
-            }
+        if (StripedLockTable::isLocked(before) && !mine) {
+            last_abort_reason_ = AbortReason::ReadLocked;
+            return false;
         }
-
-        // 身份 + 时间验证
-        if(!entry.validator(entry.tmvar_addr, entry.expected_head, rv)) {
+        if (StripedLockTable::version(before) > rv) {
+            last_abort_reason_ = AbortReason::ReadVersionChanged;
+            return false;
+        }
+        if (!entry.validator(entry.tmvar_addr, entry.expected_head, rv)) {
+            // An update transaction intentionally requires the previously
+            // selected node to still be the current head. This is stricter
+            // than snapshot isolation but avoids stale-read updates.
             last_abort_reason_ = AbortReason::ReadVersionChanged;
             return false;
         }
 
-        // lfence：防止后面的锁检查被排到前面
-        std::atomic_thread_fence(std::memory_order_acquire);
-
-        if(lock_table.is_locked(entry.tmvar_addr)){
-            size_t idx = lock_table.getStripeIndex(entry.tmvar_addr);
-            void* idx_ptr = reinterpret_cast<void*>(idx);
-
-            bool locked_by_me = std::binary_search(locks.begin(), locks.end(), idx_ptr);
-            if(!locked_by_me) {
-                last_abort_reason_ = AbortReason::ReadLocked;
-                return false;
-            }
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        const uint64_t after = lock_table.loadStateByIndex(index);
+        if (after != before ||
+            (StripedLockTable::isLocked(after) && !mine)) {
+            last_abort_reason_ = AbortReason::ReadLocked;
+            return false;
         }
     }
     return true;
 }
 
-
 void Transaction::lockWriteSet() {
-    auto& wset = desc_->writeSet();
     auto& locks = desc_->lockSet();
-    
     locks.clear();
-    
     auto& lock_table = StripedLockTable::instance();
-    
-    // 1. 直接填入 locks
-    for(auto& entry : wset) {
-        size_t idx = lock_table.getStripeIndex(entry.tmvar_addr);
-        locks.push_back(reinterpret_cast<void*>(idx));
-    }
 
-    // 2. 在 locks 上排序去重
+    // Build, sort, deduplicate before taking any locks, so bad_alloc
+    // cannot strand the transaction holding a partially acquired lockset.
+    for (const auto& entry : desc_->writeSet())
+        locks.push_back(lock_table.getStripeIndex(entry.tmvar_addr));
     std::sort(locks.begin(), locks.end());
-    auto last = std::unique(locks.begin(), locks.end());
-    locks.erase(last, locks.end());
+    locks.erase(std::unique(locks.begin(), locks.end()), locks.end());
 
-    // 3. 遍历加锁
-    for(void* ptr_idx : locks) {
-        size_t idx = reinterpret_cast<size_t>(ptr_idx);
-        lock_table.lockByIndex(idx);
-    }
+    for (size_t index : locks)
+        lock_table.lockByIndex(index);
 }
 
 void Transaction::unlockWriteSet() {
     auto& locks = desc_->lockSet();
     auto& lock_table = StripedLockTable::instance();
-    
-    for (auto it = locks.rbegin(); it != locks.rend(); ++it) {
-        size_t idx = reinterpret_cast<size_t>(*it);
-        lock_table.unlockByIndex(idx);
-    }
+    for (auto it = locks.rbegin(); it != locks.rend(); ++it)
+        lock_table.unlockByIndex(*it);
+    locks.clear();
+}
+
+void Transaction::unlockCommittedWriteSet(uint64_t wv) {
+    auto& locks = desc_->lockSet();
+    auto& lock_table = StripedLockTable::instance();
+    for (auto it = locks.rbegin(); it != locks.rend(); ++it)
+        lock_table.unlockCommittedByIndex(*it, wv);
     locks.clear();
 }
 

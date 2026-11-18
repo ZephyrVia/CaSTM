@@ -155,6 +155,12 @@ void EBRManager::retire(void* ptr, void (*deleter)(void*)) {
     // 退休发生时以全局纪元作为回收账本的时间戳，而不是使用本线程
     // announced epoch。线程可能仍停留在 E，但全局纪元已经推进到 E+1；
     // 若把对象放入 E 桶，collect(G-2) 会在 G=E+2 时提前回收它。
-    uint64_t retire_epoch = global_epoch_.load(std::memory_order_acquire);
-    this->garbage_lists_[retire_epoch % kNumEpochLists].pushNode(g_node);
+    retirePrepared(g_node);
+}
+
+void EBRManager::retirePrepared(GarbageNode* record) noexcept {
+    if (!record) return;
+    const uint64_t retire_epoch =
+        global_epoch_.load(std::memory_order_acquire);
+    garbage_lists_[retire_epoch % kNumEpochLists].pushNode(record);
 }

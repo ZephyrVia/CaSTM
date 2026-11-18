@@ -13,11 +13,11 @@ public:
     GlobalClock& operator=(const GlobalClock&) = delete;
 
     static uint64_t now() noexcept {
-        return clock_.load(std::memory_order_acquire);
+        return clock_.load(std::memory_order_seq_cst);
     }
 
     static uint64_t tick() noexcept {
-        return clock_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        return clock_.fetch_add(1, std::memory_order_seq_cst) + 1;
     }
 
 private:

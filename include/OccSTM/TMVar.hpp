@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <new>
 #include "EBRManager/EBRManager.hpp"
 #include "VersionNode.hpp"
 
@@ -25,7 +26,8 @@ public:
 
     // 静态生命周期管理函数
     static bool validate(const void* addr, const void* expected_head, uint64_t rv);
-    static void committer(void* tmvar_ptr, void* node_ptr, uint64_t wts);
+    static void committer(void* tmvar_ptr, void* node_ptr, uint64_t wts) noexcept;
+    static void pruneNoThrow(void* tmvar_ptr) noexcept;
     static void deleter(void* p);
 
     TMVar(const TMVar&) = delete;    
@@ -98,33 +100,48 @@ bool TMVar<T>::validate(const void* addr, const void* expected_head, uint64_t rv
 }
 
 template<typename T>
-void TMVar<T>::committer(void* tmvar_ptr, void* node_ptr, uint64_t wts) {
+void TMVar<T>::committer(void* tmvar_ptr, void* node_ptr,
+                         uint64_t wts) noexcept {
     auto* tmvar = static_cast<TMVar<T>*>(tmvar_ptr);
     auto* new_node = static_cast<Node*>(node_ptr);
     new_node->write_ts = wts;
-    
-    std::atomic<Node*>& head_ref = tmvar->getHeadRef();
-    // The write stripe serializes committers. Initialize the private node's
-    // link before publishing it through the release store to head.
+
+    // The write stripe is held for ALL nodes in this transaction. This
+    // publication performs no allocations and has no failure path.
+    auto& head_ref = tmvar->getHeadRef();
     Node* old_head = head_ref.load(std::memory_order_relaxed);
     new_node->prev.store(old_head, std::memory_order_relaxed);
     head_ref.store(new_node, std::memory_order_release);
-
-    int depth = 0;
-    Node* curr = new_node;
-    
-    while (curr && depth < MAX_HISTORY) {
-        curr = curr->prev.load(std::memory_order_acquire);
-        depth++;
-    }
-
-    if (curr) {
-        // Atomically detach one tail. Readers may see the old link or nullptr;
-        // neither observation permits freeing nodes before their EBR guards end.
-        Node* garbage = curr->prev.exchange(nullptr, std::memory_order_acq_rel);
-        if (garbage) EBRManager::instance()->retire(garbage, TMVar<T>::chainDeleter_);
-    }
 }
+
+template<typename T>
+void TMVar<T>::pruneNoThrow(void* tmvar_ptr) noexcept {
+    auto* tmvar = static_cast<TMVar<T>*>(tmvar_ptr);
+    // Called under this TMVar's write stripe only AFTER every node is
+    // published. Old readers may still hold EBR-protected tail pointers.
+    Node* curr = tmvar->loadHead();
+    for (int depth = 0; curr && depth < MAX_HISTORY; ++depth)
+        curr = curr->prev.load(std::memory_order_acquire);
+    if (!curr || !curr->prev.load(std::memory_order_acquire)) return;
+
+    // Allocate the GC record BEFORE removing the tail from the shared
+    // chain. If allocation fails, retain additional history and still
+    // complete the transaction successfully.
+    auto* manager = EBRManager::instance();
+    void* memory = ::operator new(sizeof(GarbageNode), std::nothrow);
+    if (!memory) return;
+    auto* record = new (memory) GarbageNode(nullptr, &TMVar<T>::chainDeleter_);
+
+    Node* old_tail = curr->prev.exchange(nullptr, std::memory_order_acq_rel);
+    if (!old_tail) {
+        record->~GarbageNode();
+        ::operator delete(record);
+        return;
+    }
+    record->garbage_ptr = old_tail;
+    manager->retirePrepared(record);
+}
+
 
 template<typename T>
 void TMVar<T>::deleter(void* p) {
