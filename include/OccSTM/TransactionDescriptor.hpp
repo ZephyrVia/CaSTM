@@ -22,10 +22,10 @@ struct WriteLogEntry {
     void* new_node;     // 擦除掉类型信息的新节点
 
     using Committer = void (*)(void* tmvar, void* node, uint64_t write_ts) noexcept;
+    Committer committer;
     // Best-effort history cleanup while the writer still holds its stripe.
     using Pruner = void (*)(void* tmvar) noexcept;
     Pruner pruner;
-    Committer committer;
 
     using Deleter = void (*)(void* node);
     Deleter deleter;
