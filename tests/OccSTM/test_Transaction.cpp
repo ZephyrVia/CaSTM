@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <stdexcept>
 #include <vector>
@@ -8,6 +11,100 @@
 #include "OccSTM/Transaction.hpp"
 
 using namespace STM::Occ;
+
+// Phase-gated production publish callback: first write is visible while a
+// second write from the same transaction has not yet been published. The
+// original (unlocked-read) implementation accepted the mixed state.
+namespace {
+struct PartialPublishGate {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool first_published = false;
+    bool resume = false;
+
+    void pauseAfterFirstPublish() noexcept {
+        std::unique_lock<std::mutex> lock(mutex);
+        first_published = true;
+        cv.notify_all();
+        cv.wait(lock, [this] { return resume; });
+    }
+
+    bool waitForPublication() {
+        std::unique_lock<std::mutex> lock(mutex);
+        return cv.wait_for(lock, std::chrono::seconds(20),
+                           [this] { return first_published; });
+    }
+
+    void releaseWriter() {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            resume = true;
+        }
+        cv.notify_all();
+    }
+};
+
+std::atomic<PartialPublishGate*> active_publish_gate{nullptr};
+
+void publishFirstThenPause(void* tmvar, void* node, uint64_t wv) noexcept {
+    TMVar<int>::committer(tmvar, node, wv);
+    auto* gate = active_publish_gate.load(std::memory_order_acquire);
+    if (gate) gate->pauseAfterFirstPublish();
+}
+} // namespace
+
+TEST(OccAtomicVisibilityTest, NeverAcceptsPartiallyPublishedMultiVarWrite) {
+    TMVar<int> a(0), b(0);
+    PartialPublishGate gate;
+    active_publish_gate.store(&gate, std::memory_order_release);
+    std::atomic<bool> writer_ok{false};
+
+    std::thread writer([&] {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        tx.store(a, 1);
+        tx.store(b, 1);
+        descriptor.writeSet().front().committer = &publishFirstThenPause;
+        writer_ok.store(tx.commit(), std::memory_order_release);
+    });
+
+    const bool published = gate.waitForPublication();
+
+    bool accepted_mixed = false;
+    if (published) {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        try {
+            const int va = tx.load(a);
+            const int vb = tx.load(b);
+            const bool accepted = tx.commit();
+            accepted_mixed = accepted && (va != vb);
+        } catch (const RetryException&) {
+            // With versioned read barriers, an in-flight writer may cause
+            // an immediate retry, which is the correct result.
+        }
+    }
+    gate.releaseWriter();
+    writer.join();
+    active_publish_gate.store(nullptr, std::memory_order_release);
+
+    EXPECT_TRUE(published);
+    EXPECT_TRUE(writer_ok.load(std::memory_order_acquire));
+    EXPECT_FALSE(accepted_mixed)
+        << "a read-only transaction accepted A=1, B=0 mid-commit";
+
+    ebr::Guard guard(*EBRManager::instance());
+    TransactionDescriptor descriptor;
+    Transaction tx(&descriptor);
+    tx.begin();
+    EXPECT_EQ(tx.load(a), 1);
+    EXPECT_EQ(tx.load(b), 1);
+    EXPECT_TRUE(tx.commit());
+}
 
 class OccTransactionTest : public ::testing::Test {
 protected:
