@@ -21,7 +21,10 @@ struct WriteLogEntry {
     void* tmvar_addr;   // 锁对象地址（TMVar的指针）
     void* new_node;     // 擦除掉类型信息的新节点
 
-    using Committer = void (*)(void* tmvar, void* node, uint64_t write_ts);
+    using Committer = void (*)(void* tmvar, void* node, uint64_t write_ts) noexcept;
+    // Best-effort history cleanup while the writer still holds its stripe.
+    using Pruner = void (*)(void* tmvar) noexcept;
+    Pruner pruner;
     Committer committer;
 
     using Deleter = void (*)(void* node);
@@ -69,8 +72,9 @@ public:
         read_set_.push_back({addr, head, v});
     }
 
-    void addToWriteSet(void* addr, void* new_node, WriteLogEntry::Committer c, WriteLogEntry::Deleter d) {
-        write_set_.push_back({addr, new_node, c, d});
+    void addToWriteSet(void* addr, void* new_node, WriteLogEntry::Committer c,
+                       WriteLogEntry::Pruner p, WriteLogEntry::Deleter d) {
+        write_set_.push_back({addr, new_node, c, p, d});
     }
 
     void recordAllocation(void* ptr) {
@@ -83,7 +87,7 @@ public:
 
     const std::vector<ReadLogEntry>& readSet() const { return read_set_; }
     std::vector<WriteLogEntry>& writeSet() { return write_set_; }
-    std::vector<void*>& lockSet() { return lock_set_; }
+    std::vector<size_t>& lockSet() { return lock_set_; }
 
 private:
     void clearWriteSet_() {
@@ -100,7 +104,7 @@ private:
     uint64_t read_version_{0};
     std::vector<ReadLogEntry> read_set_;
     std::vector<WriteLogEntry> write_set_;
-    std::vector<void*> lock_set_; 
+    std::vector<size_t> lock_set_; 
 
     std::vector<void*> allocated_ptrs_; 
 };

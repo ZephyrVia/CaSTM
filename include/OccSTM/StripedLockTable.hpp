@@ -1,79 +1,114 @@
 #pragma once
 
 #include <atomic>
-#include <thread>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
-#include <immintrin.h> 
+#include <thread>
+#include <immintrin.h>
 
+// TL2-style versioned per-stripe write locks. A single atomic word encodes
+// the last committed write version (upper bits) and the locked bit (bit 0).
+// The version changes only when a transaction commits a write to this stripe.
 namespace STM {
 namespace Occ {
 
 class StripedLockTable {
 public:
-    static constexpr size_t kTableSize = 1 << 20; 
-    static constexpr size_t kTableMask = kTableSize - 1; 
+    static constexpr size_t kTableSize = 1 << 20;
+    static constexpr size_t kTableMask = kTableSize - 1;
+    static constexpr uint64_t kLockBit = 1;
 
     static StripedLockTable& instance() noexcept {
         static StripedLockTable table;
         return table;
-    } 
+    }
+
+    static bool isLocked(uint64_t state) noexcept {
+        return (state & kLockBit) != 0;
+    }
+
+    static uint64_t version(uint64_t state) noexcept {
+        return state >> 1;
+    }
+
+    static uint64_t unlockedState(uint64_t version) noexcept {
+        return version << 1;
+    }
 
     size_t getStripeIndex(const void* addr) const noexcept {
         return std::hash<const void*>{}(addr) & kTableMask;
     }
 
-    // 非递归自旋锁 (TTAS)
-    // 注意：调用者需确保 index 不重复以避免死锁
+    uint64_t loadStateByIndex(size_t index) const noexcept {
+        return locks_[index].state.load(std::memory_order_acquire);
+    }
+
+    uint64_t loadState(const void* addr) const noexcept {
+        return loadStateByIndex(getStripeIndex(addr));
+    }
+
+    // TTAS + CAS. Lock acquisition preserves the last committed version.
+    // Writers must obtain *all* write stripes before GlobalClock::tick().
     void lockByIndex(size_t index) noexcept {
-        LockEntry& entry = locks_[index];
-        
-        while (true) {
-            // 1. Test (Read): 减少缓存颠簸
-            if (entry.flag.load(std::memory_order_relaxed)) {
+        auto& word = locks_[index].state;
+        for (;;) {
+            uint64_t old = word.load(std::memory_order_relaxed);
+            if (isLocked(old)) {
                 _mm_pause();
                 continue;
             }
-
-            // 2. Set (Write): 尝试获取锁
-            if (!entry.flag.exchange(true, std::memory_order_acquire)) {
+            if (word.compare_exchange_weak(
+                    old, old | kLockBit,
+                    std::memory_order_acq_rel,
+                    std::memory_order_relaxed)) {
                 return;
             }
-            
-            std::this_thread::yield(); 
+            std::this_thread::yield();
         }
     }
 
+    // Failed/aborted update, or explicit/manual lock: no new version.
     void unlockByIndex(size_t index) noexcept {
-        locks_[index].flag.store(false, std::memory_order_release);
+        auto& word = locks_[index].state;
+        const uint64_t locked = word.load(std::memory_order_relaxed);
+        word.store(locked & ~kLockBit, std::memory_order_release);
     }
 
-    // 原始地址操作接口
-    void lock(const void* addr) noexcept { lockByIndex(getStripeIndex(addr)); }
-    void unlock(const void* addr) noexcept { unlockByIndex(getStripeIndex(addr)); }
+    // Committed update: release with a new version after *all* of this
+    // transaction's TMVar heads have been published.
+    void unlockByIndex(size_t index, uint64_t committed_version) noexcept {
+        locks_[index].state.store(
+            unlockedState(committed_version), std::memory_order_release);
+    }
+
+    void lock(const void* addr) noexcept {
+        lockByIndex(getStripeIndex(addr));
+    }
+
+    void unlock(const void* addr) noexcept {
+        unlockByIndex(getStripeIndex(addr));
+    }
 
     bool is_locked(const void* addr) const noexcept {
-        return locks_[getStripeIndex(addr)].flag.load(std::memory_order_acquire);
+        return isLocked(loadState(addr));
     }
 
 private:
-    // 64字节对齐，防止伪共享 (False Sharing)
     struct alignas(64) LockEntry {
-        std::atomic<bool> flag{false};
+        std::atomic<uint64_t> state{0};
     };
 
     StripedLockTable() {
         locks_ = new LockEntry[kTableSize];
-        for (size_t i = 0; i < kTableSize; ++i) {
-            locks_[i].flag.store(false, std::memory_order_relaxed);
-        }
     }
 
-    ~StripedLockTable() { 
-        delete[] locks_; 
+    ~StripedLockTable() {
+        delete[] locks_;
     }
 
     LockEntry* locks_ = nullptr;
 };
 
-}
-}
+} // namespace Occ
+} // namespace STM

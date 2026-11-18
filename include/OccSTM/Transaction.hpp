@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 namespace STM {
 namespace Occ {
@@ -51,7 +52,6 @@ public:
 private:
     bool validateReadSet();
     void lockWriteSet();
-    void unlockWriteSet();
 
 private:
     TransactionDescriptor* desc_;
@@ -71,26 +71,43 @@ T Transaction::load(TMVar<T>& var) {
         }
     }
 
-    auto* curr = var.loadHead();
+    auto& locks = StripedLockTable::instance();
 
-        
-    uint64_t rv = desc_->getReadVersion();
+    // TL2 read barrier around an immutable MVCC chain traversal. Unlike
+    // single-version TL2, a newer unlocked stripe version is allowed:
+    // selecting the latest VersionNode with ts <= RV gives the old snapshot.
+    const uint64_t before = locks.loadState(&var);
+    if (StripedLockTable::isLocked(before)) {
+        last_abort_reason_ = AbortReason::ReadLocked;
+        throw RetryException();
+    }
 
-    // 遍历链表找 <= RV 的版本
-    while (curr != nullptr && curr->write_ts > rv) {
-        // A concurrent writer may detach this edge. Seeing nullptr means
-        // retry; a previously loaded old pointer remains protected by EBR.
+    Node* curr = var.loadHead();
+    const uint64_t rv = desc_->getReadVersion();
+    while (curr && curr->write_ts > rv) {
+        // Other writers can sever a history edge under their stripe lock.
+        // EBR protects any node pointer already obtained.
         curr = curr->prev.load(std::memory_order_acquire);
     }
-    
-    if(curr == nullptr) {
+    if (!curr) {
         last_abort_reason_ = AbortReason::SnapshotUnavailable;
-        throw RetryException();   
+        throw RetryException();
     }
 
-    desc_->addToReadSet(&var, curr, TMVar<T>::validate);
+    T value = curr->payload;
 
-    return curr->payload;
+    // Prevent the data read from being reordered after the post-check.
+    std::atomic_thread_fence(std::memory_order_acq_rel);
+    const uint64_t after = locks.loadState(&var);
+    if (StripedLockTable::isLocked(after) || before != after) {
+        last_abort_reason_ = AbortReason::ReadVersionChanged;
+        throw RetryException();
+    }
+
+    // For an updating transaction, commit will conservatively require
+    // this selected version to *still be the head* (strict OCC validation).
+    desc_->addToReadSet(&var, curr, TMVar<T>::validate);
+    return value;
 }
 
 template <typename T>
@@ -98,7 +115,13 @@ void Transaction::store(TMVar<T>& var, const T& val) {
     using Node = typename TMVar<T>::Node;
     Node* node = new Node(0, nullptr, val);
 
-    desc_->addToWriteSet(&var, node, TMVar<T>::committer, TMVar<T>::deleter);
+    try {
+        desc_->addToWriteSet(&var, node, TMVar<T>::committer,
+                             TMVar<T>::pruneNoThrow, TMVar<T>::deleter);
+    } catch (...) {
+        delete node; // A failed WriteSet allocation must not leak its draft.
+        throw;
+    }
 }
 
 

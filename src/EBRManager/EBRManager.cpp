@@ -158,3 +158,13 @@ void EBRManager::retire(void* ptr, void (*deleter)(void*)) {
     uint64_t retire_epoch = global_epoch_.load(std::memory_order_acquire);
     this->garbage_lists_[retire_epoch % kNumEpochLists].pushNode(g_node);
 }
+
+void EBRManager::retirePrepared(GarbageNode* prepared) noexcept {
+    if (!prepared) return;
+    // The object has already been detached. No allocation is allowed here;
+    // terminate on unrecoverable mutex/system failure rather than letting a
+    // partially published commit escape as an exception.
+    const uint64_t retire_epoch =
+        global_epoch_.load(std::memory_order_acquire);
+    garbage_lists_[retire_epoch % kNumEpochLists].pushNode(prepared);
+}
