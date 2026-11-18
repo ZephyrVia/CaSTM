@@ -18,9 +18,9 @@ jobs:
       - name: Build baseline and candidate (identical compiler / allocator)
         run: |
           git worktree add --detach /tmp/castm-baseline 7ceb0a73f23fc72da050f09b2b8070c2137f6b2c
-          cmake -S /tmp/castm-baseline -B /tmp/castm-baseline-build -DCMAKE_BUILD_TYPE=Release -DSTM_ALLOCATOR_MODE=0
+          cmake -S /tmp/castm-baseline -B /tmp/castm-baseline-build -DCMAKE_BUILD_TYPE=Release -DSTM_ALLOCATOR_MODE=system
           cmake --build /tmp/castm-baseline-build --target stm_benchmark -j2
-          cmake -S . -B /tmp/castm-candidate-build -DCMAKE_BUILD_TYPE=Release -DSTM_ALLOCATOR_MODE=0
+          cmake -S . -B /tmp/castm-candidate-build -DCMAKE_BUILD_TYPE=Release -DSTM_ALLOCATOR_MODE=system
           cmake --build /tmp/castm-candidate-build --target stm_benchmark -j2
       - name: Three alternating short runs per workload
         run: |
