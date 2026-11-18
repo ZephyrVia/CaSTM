@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | TxContext | 持有读写集，开始、验证、提交或中止事务 | [TxContext.hpp](include/WwSTM/TxContext.hpp) |
 | TxDescriptor | 保存 start_ts、ACTIVE/ABORTED/COMMITTED 状态与 prepare gate | [TxDescriptor.hpp](include/WwSTM/TxDescriptor.hpp) |
+| CommitCoordinator | 全局提交互斥锁，串行化提交验证到 Descriptor CAS | [CommitCoordinator.hpp](include/WwSTM/CommitCoordinator.hpp) |
 | TMVar | 用一个 tagged head 发布 Node 或 Record | [TMVar.hpp](include/WwSTM/TMVar.hpp) |
 | WriteRecord | 保存 owner、old_node、new_node 和 prepared 状态 | [WriteRecord.hpp](include/WwSTM/WriteRecord.hpp) |
 | VersionNode | 保存 payload 与 write_ts | [VersionNode.hpp](include/WwSTM/VersionNode.hpp) |
@@ -40,9 +41,17 @@ TxContext 记录 node identity/version，用于后续验证。
 重复写复用自己的 Record/草稿；prepare 开始后冻结草稿。owner 写入与 prepare
 使用同一个 descriptor `write_gate` 互斥锁。
 
-读者可能观察到一个事务生效前后的不同变量，随后验证失败并重试。因此应用必须
-以事务成功提交为读取结果的接受条件；当前没有对所有执行历史给出 serializability
-或 opacity 的形式化证明。
+事务执行阶段的读取仍可能跨越另一个事务的提交点，观察到混合数据；因此事务必须
+通过提交验证才能接受结果。当前所有事务（包括只读事务）在提交时都获取
+`CommitCoordinator` 的全局 mutex，并在锁内完成 ReadSet/WriteSet 验证、Prepare
+和 `ACTIVE → COMMITTED` CAS。这样另一个事务不能在本事务验证读集之后、逻辑提交
+之前插入一次 COMMITTED 转换，避免了该窗口导致的 Write Skew。
+
+全局 mutex 只覆盖提交阶段，不覆盖事务执行期的 Read/Write，也不覆盖提交后的
+Helping/EBR cleanup；因此执行阶段仍可并发，但提交验证与逻辑提交被全局串行化。
+该实现以成功提交历史可串行化为目标，并由 Write Skew 回归测试覆盖关键交错；
+尚未进行形式化证明，也不保证 Opacity（最终会 Abort 的事务在执行期间仍可能
+观察到混合数据）。
 
 ## 冲突裁决与进展边界
 
@@ -56,13 +65,14 @@ TxContext 记录 node identity/version，用于后续验证。
 
 ## 提交与中止
 
-写事务的顺序为：
+只读和读写事务的提交都必须经过同一全局提交临界区。写事务的顺序为：
 
 1. 获取 write_gate，检查 ACTIVE 并标记 prepare_started。
-2. 验证读集和写集 ownership。
-3. 获取 commit_ts，prepare 所有已发布 Record；最终 payload 与时间戳必须在此阶段就绪。
-4. CAS：ACTIVE → COMMITTED，作为事务逻辑提交点。
-5. 释放 write_gate，帮助各 Record 展平，清理事务资源。
+2. 获取 `CommitCoordinator::mutex()`；等待期间可能被 Wound，因此获取后重新检查 ACTIVE。
+3. 在全局提交锁内验证读集和写集 ownership。
+4. 写事务获取 commit_ts，并 prepare 所有已发布 Record；只读事务跳过此步。
+5. 在全局提交锁内 CAS：ACTIVE → COMMITTED，作为事务逻辑提交点。
+6. 先释放全局提交锁和 write_gate，再帮助各 Record 展平、清理事务资源。
 
 COMMITTED 是不可逆终态。helper 先完成展平，不改变 owner 的提交结果。
 提交 CAS 之前失败的事务进入 ABORTED，逻辑上保留旧值，再完成清理。
@@ -90,7 +100,8 @@ VERIFY 为白盒逻辑测试保留部分已发布对象，并使用额外的 TMV
 | 问题 | 回归入口或记录 |
 | --- | --- |
 | value/version 偏斜 | [BUG-06](BUG-06-WwSTM版本值偏斜丢失更新.md)、TMVarTest.HeadIdentityChangeRetriesSnapshot |
-| 多变量逻辑提交与 helper 交错 | [BUG-07](BUG-07-WwSTM-single-head-Locator协议设计审计.md)、TMVarTest.MultiVariableCommitLinearizesAtDescriptorStatus / MultiVariableAtomicityStress |
+| 多变量逻辑提交与 helper 交错 | [BUG-07](BUG-07-WwSTM-single-head-Locator协议设计审计.md)、TMVarTest.MultiVariableAtomicityStress / PostCommitHelperRaceKeepsCommitSuccessful |
+| 提交验证窗口与 Write Skew | `CommitCoordinator`、TMVarTest.GlobalCommitMutexPreventsWriteSkew / DisjointWriteTransactionsBothCommit |
 | 已发布 Record 生命周期 | [BUG-04](BUG-04-WwSTM-WriteRecord生命周期.md)、TMVarTest.PublishedWriteRecordRetiresAfterHelper |
 | descriptor 对齐与延迟回收 | [BUG-08](BUG-08-WwSTM-TxDescriptor生命周期与对齐.md)、TxDescriptorTest |
 | EBR 退休 epoch | [BUG-02](BUG-02-EBR-retire纪元标记提前回收.md)、EBRManagerTest |

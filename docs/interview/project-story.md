@@ -28,7 +28,10 @@ head -> VersionNode | WriteRecord
 WriteRecord 保存 owner descriptor、旧版本和新版本。读者根据 descriptor 状态选择
 旧版本或新版本，helper 可以把终态 Record 展平回 Node。事务先完成 validation 和
 prepare，再用一次 ACTIVE -> COMMITTED CAS 确定逻辑提交结果；后面的 Record -> Node
-只是物理清理，因此多变量事务不会因为清理顺序不同而产生 partial commit。
+只是物理清理，因此多变量事务不会因为清理顺序不同而产生 partial commit。当前原型
+还使用 CommitCoordinator 全局 mutex 串行化所有事务从读写集验证到 Descriptor CAS
+的提交阶段（只读事务也参与）；事务执行期仍可并发，但提交吞吐会受到全局锁限制。
+这用于封闭验证窗口、阻止 Write Skew，细粒度提交协调暂不实现。
 
 生命周期方面，mode=0 中 reader、owner 和 helper 都可能暂时持有裸指针，所以
 published Record 不能直接释放，必须通过 EBR 延迟回收；TxDescriptor 也要等
@@ -125,9 +128,11 @@ jitter 平均 **906,055 TPS**、p99 均值 **407.48 μs**，单逻辑事务最�
 ### 多变量提交为什么能一起生效？
 
 WwSTM 的多个 Record 引用同一 descriptor。全部 prepare 后，descriptor 的
-ACTIVE → COMMITTED CAS 改变它们的逻辑解释，后续展平只做物理清理。
-读事务仍需校验读集并成功提交；不能把执行中的任意中间读值当成已接受的一致快照。
-对应证据是确定性交错与 MultiVariableAtomicityStress 等回归测试。
+ACTIVE → COMMITTED CAS 改变它们的逻辑解释，后续展平只做物理清理。所有事务在
+全局提交 mutex 内完成读集/写集验证和该状态 CAS，避免其他事务在验证后抢先提交。
+读事务仍需校验读集并成功提交；执行期间可能观察到混合数据的事务不能被当作已接受
+结果，当前实现不承诺 Opacity。对应证据包括 WriteSkew、MultiVariableAtomicityStress
+等回归测试。
 
 ### 使用 atomic 后为什么仍会 UAF？
 
