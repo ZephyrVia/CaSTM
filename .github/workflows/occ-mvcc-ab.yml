@@ -1,0 +1,118 @@
+name: Temporary OccSTM versioned-lock A/B
+
+on:
+  push:
+    branches:
+      - codex/occ-mvcc-versioned-lock-20261118
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out baseline in separate worktree
+        run: git worktree add --detach "$RUNNER_TEMP/castm-base" 7ceb0a73f23fc72da050f09b2b8070c2137f6b2c
+
+      - name: Build baseline and candidate (identical Release flags)
+        shell: bash
+        run: |
+          cmake -S "$RUNNER_TEMP/castm-base" -B "$RUNNER_TEMP/base-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=0"
+          cmake --build "$RUNNER_TEMP/base-build" --target stm_benchmark --parallel 2
+          cmake -S . -B "$RUNNER_TEMP/head-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-DSTM_WW_VERIFY_LOGIC_MODE=0"
+          cmake --build "$RUNNER_TEMP/head-build" --target stm_benchmark --parallel 2
+
+      - name: Interleaved A/B benchmark (3 repetitions)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import csv, io, json, os, pathlib, statistics, subprocess, sys
+
+          tmp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          binaries = {
+              "base": tmp / "base-build" / "benchmarks" / "stm_benchmark",
+              "head": tmp / "head-build" / "benchmarks" / "stm_benchmark",
+          }
+          # Both versions run the same deterministic batches on the same host.
+          cases = [
+              (1, 90, "low"),
+              (8, 90, "low"),
+              (8, 50, "low"),
+              (8, 90, "high"),
+              (8, 50, "high"),
+          ]
+          results = []
+          for threads, ratio, contention in cases:
+              for rep in range(1, 4):
+                  # Reverse order every run to partially offset thermal/scheduling drift.
+                  sides = ("base", "head") if rep % 2 else ("head", "base")
+                  for side in sides:
+                      cmd = [
+                          str(binaries[side]), "--backend", "occ", "--threads", str(threads),
+                          "--read-ratio", str(ratio), "--contention", contention,
+                          "--ops-per-tx", "8", "--backoff", "jitter",
+                          "--warmup-ms", "200", "--measure-ms", "800",
+                          "--run", str(rep), "--seed", "123456",
+                          "--max-attempts", "100000", "--csv",
+                      ]
+                      try:
+                          p = subprocess.run(cmd, capture_output=True, text=True, timeout=50)
+                          data = list(csv.DictReader(io.StringIO(p.stdout), strict=True))
+                          row = data[0] if len(data) == 1 else {}
+                          valid = p.returncode == 0 and row.get("valid") == "1"
+                          result = {
+                              "side": side, "threads": threads, "read_ratio": ratio,
+                              "contention": contention, "run": rep, "valid": valid,
+                              "returncode": p.returncode,
+                              "throughput_tps": float(row.get("throughput_tps", 0) or 0),
+                              "abort_rate": float(row.get("abort_rate", 0) or 0),
+                              "p99_us": float(row.get("p99_us", 0) or 0),
+                              "failure_reason": row.get("failure_reason", ""),
+                              "stderr": p.stderr[-800:],
+                          }
+                      except (subprocess.TimeoutExpired, ValueError, csv.Error) as exc:
+                          result = {
+                              "side": side, "threads": threads, "read_ratio": ratio,
+                              "contention": contention, "run": rep,
+                              "valid": False, "failure_reason": str(exc)
+                          }
+                      results.append(result)
+                      print(json.dumps(result, sort_keys=True), flush=True)
+
+          (tmp / "occ-mvcc-ab.json").write_text(
+              json.dumps({
+                  "baseline": "7ceb0a73f23fc72da050f09b2b8070c2137f6b2c",
+                  "candidate": os.environ.get("GITHUB_SHA", "unknown"),
+                  "results": results,
+              }, indent=2), encoding="utf-8")
+          print("\n=== Valid-only summaries (do NOT mix invalid outcomes) ===")
+          for threads, ratio, contention in cases:
+              subsets = {}
+              for side in ("base", "head"):
+                  matches = [r for r in results if r["side"] == side and
+                             r["threads"] == threads and r["read_ratio"] == ratio and
+                             r["contention"] == contention]
+                  valid = [r for r in matches if r["valid"]]
+                  subsets[side] = valid
+                  print(f"{side:4s} {threads}T {ratio}R {contention:4s}: "
+                        f"{len(valid)}/{len(matches)} valid; "
+                        f"mean TPS={statistics.mean(r['throughput_tps'] for r in valid):,.0f}"
+                        if valid else
+                        f"{side:4s} {threads}T {ratio}R {contention:4s}: "
+                        f"0/{len(matches)} valid")
+              if len(subsets["base"]) == 3 and len(subsets["head"]) == 3:
+                  base = statistics.mean(r["throughput_tps"] for r in subsets["base"])
+                  head = statistics.mean(r["throughput_tps"] for r in subsets["head"])
+                  print(f"relative delta: {(head/base-1)*100:+.1f}%")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: occ-mvcc-interleaved-ab
+          path: ${{ runner.temp }}/occ-mvcc-ab.json
