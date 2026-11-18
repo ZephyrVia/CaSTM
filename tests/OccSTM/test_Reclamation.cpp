@@ -233,7 +233,12 @@ TEST(OccReclamationTest, ConcurrentSnapshotTraversalAndPruning) {
                     if (transaction.load(var) != 0) ++bad_values;
                     if (!transaction.commit()) ++bad_values;
                 } catch (const RetryException&) {
-                    if (transaction.lastAbortReason() != AbortReason::SnapshotUnavailable) ++bad_values;
+                    const AbortReason reason = transaction.lastAbortReason();
+                    // Versioned-lock read barriers may reject an in-progress
+                    // writer before an MVCC history traversal. Both are
+                    // legitimate, safe reasons for this read-only retry.
+                    if (reason != AbortReason::SnapshotUnavailable &&
+                        reason != AbortReason::ReadLocked) ++bad_values;
                 }
                 attempts.fetch_add(1, std::memory_order_relaxed);
             }
