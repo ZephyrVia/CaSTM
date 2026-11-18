@@ -17,30 +17,27 @@ using namespace STM::Occ;
 // original (unlocked-read) implementation accepted the mixed state.
 namespace {
 struct PartialPublishGate {
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool first_published = false;
-    bool resume = false;
+    std::atomic<bool> first_published{false};
+    std::atomic<bool> resume{false};
 
     void pauseAfterFirstPublish() noexcept {
-        std::unique_lock<std::mutex> lock(mutex);
-        first_published = true;
-        cv.notify_all();
-        cv.wait(lock, [this] { return resume; });
+        first_published.store(true, std::memory_order_release);
+        while (!resume.load(std::memory_order_acquire))
+            std::this_thread::yield();
     }
 
     bool waitForPublication() {
-        std::unique_lock<std::mutex> lock(mutex);
-        return cv.wait_for(lock, std::chrono::seconds(20),
-                           [this] { return first_published; });
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while (!first_published.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
+        }
+        return first_published.load(std::memory_order_acquire);
     }
 
-    void releaseWriter() {
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            resume = true;
-        }
-        cv.notify_all();
+    void releaseWriter() noexcept {
+        resume.store(true, std::memory_order_release);
     }
 };
 
