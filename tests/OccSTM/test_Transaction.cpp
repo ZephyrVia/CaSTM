@@ -103,6 +103,149 @@ TEST(OccAtomicVisibilityTest, NeverAcceptsPartiallyPublishedMultiVarWrite) {
     EXPECT_TRUE(tx.commit());
 }
 
+// A writer that already took WV for A but has not completed publication
+// cannot globally serialize an independent writer on a different stripe.
+// If the second writer finishes first, a reader with RV >= both WVs must
+// still reject A while its older-WV writer is holding the version lock.
+TEST(OccAtomicVisibilityTest, DisjointWritersMayCommitOutOfTimestampOrder) {
+    TMVar<int> a(0), b(0);
+    auto& stripes = StripedLockTable::instance();
+    ASSERT_NE(stripes.getStripeIndex(&a), stripes.getStripeIndex(&b));
+
+    PartialPublishGate gate;
+    active_publish_gate.store(&gate, std::memory_order_release);
+    std::atomic<bool> a_committed{false}, b_committed{false};
+
+    std::thread writer_a([&] {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        tx.store(a, 1);
+        descriptor.writeSet().front().committer = &publishFirstThenPause;
+        a_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    const bool a_is_published = gate.waitForPublication();
+    std::thread writer_b([&] {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        tx.store(b, 1);
+        b_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    // Bound the wait so a regression adding a global commit lock does not
+    // hang the test indefinitely.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!b_committed.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    const bool b_finished_first = b_committed.load(std::memory_order_acquire);
+
+    bool old_timestamp_snapshot_was_accepted = false;
+    bool saw_pending_writer = false;
+    if (a_is_published && b_finished_first) {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin(); // RV includes B's WV and A's still-in-flight WV.
+        try {
+            const int va = tx.load(a);
+            const int vb = tx.load(b);
+            old_timestamp_snapshot_was_accepted =
+                tx.commit() && va != 1 && vb == 1;
+        } catch (const RetryException&) {
+            saw_pending_writer = true;
+        }
+    }
+
+    gate.releaseWriter();
+    writer_a.join();
+    writer_b.join();
+    active_publish_gate.store(nullptr, std::memory_order_release);
+
+    EXPECT_TRUE(a_is_published);
+    EXPECT_TRUE(b_finished_first)
+        << "a disjoint stripe must not wait for another writer's commit";
+    EXPECT_TRUE(a_committed.load(std::memory_order_acquire));
+    EXPECT_TRUE(b_committed.load(std::memory_order_acquire));
+    EXPECT_TRUE(saw_pending_writer)
+        << "RV including an unfinished WV must not accept a partial state";
+    EXPECT_FALSE(old_timestamp_snapshot_was_accepted);
+    EXPECT_LT(a.loadHead()->write_ts, b.loadHead()->write_ts);
+
+    ebr::Guard guard(*EBRManager::instance());
+    TransactionDescriptor descriptor;
+    Transaction tx(&descriptor);
+    tx.begin();
+    EXPECT_EQ(tx.load(a), 1);
+    EXPECT_EQ(tx.load(b), 1);
+    EXPECT_TRUE(tx.commit());
+}
+
+// Each successful read-only snapshot should observe a consistent pair from
+// a multi-variable updater. RetryException is allowed if a version lock
+// overlaps a read or bounded history no longer contains its RV.
+TEST(OccAtomicVisibilityTest, ConcurrentHistoricalSnapshotPairsRemainConsistent) {
+    TMVar<int> a(0), b(0);
+    constexpr int kCommits = 800;
+    constexpr int kReaders = 4;
+    constexpr int kReadsPerThread = 600;
+    std::atomic<bool> start{false};
+    std::atomic<int> bad_pairs{0}, accepted{0}, retries{0};
+    std::vector<std::thread> threads;
+
+    threads.emplace_back([&] {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        for (int value = 1; value <= kCommits; ++value) {
+            tx.begin();
+            tx.store(a, value);
+            tx.store(b, value);
+            if (!tx.commit()) ++bad_pairs;
+        }
+    });
+
+    for (int i = 0; i < kReaders; ++i) {
+        threads.emplace_back([&] {
+            ebr::Guard guard(*EBRManager::instance());
+            TransactionDescriptor descriptor;
+            Transaction tx(&descriptor);
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            for (int attempt = 0; attempt < kReadsPerThread; ++attempt) {
+                tx.begin();
+                try {
+                    const int va = tx.load(a);
+                    const int vb = tx.load(b);
+                    if (tx.commit()) {
+                        ++accepted;
+                        if (va != vb) ++bad_pairs;
+                    }
+                } catch (const RetryException&) {
+                    ++retries;
+                }
+            }
+        });
+    }
+
+    start.store(true, std::memory_order_release);
+    for (auto& thread : threads) thread.join();
+
+    EXPECT_EQ(bad_pairs.load(), 0);
+    EXPECT_EQ(accepted.load() + retries.load(),
+              kReaders * kReadsPerThread);
+    EXPECT_EQ(a.loadHead()->payload, kCommits);
+    EXPECT_EQ(b.loadHead()->payload, kCommits);
+}
+
 class OccTransactionTest : public ::testing::Test {
 protected:
     void SetUp() override { EBRManager::instance()->enter(); }
