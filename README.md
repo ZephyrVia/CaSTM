@@ -73,7 +73,18 @@ head → VersionNode | WriteRecord
 来自 new_node；owner 可以读取自己的草稿。读操作从同一节点取得 value/version，
 复核 head identity，并在事务验证阶段检查读集。
 
-提交顺序是：\n\n~~~text\nwrite_gate → global commit mutex → validate → prepare → ACTIVE --CAS--> COMMITTED\n                                                        → unlock → help / flatten\n~~~\n\n所有事务（包括只读事务）都在同一全局提交锁内完成读写集验证和 Descriptor 状态 CAS，\n避免验证完成后被另一个事务的提交穿插，从而阻止 Write Skew。事务的 Read/Write\n执行仍可并发；全局锁只串行化提交阶段。Descriptor 状态 CAS 是逻辑提交点，\nRecord → Node 的展平只负责物理清理。成功提交后不能再回滚为 ABORTED。\n该方案牺牲提交并发度，作为原型的正确性基线；细粒度协调暂不实现。
+提交顺序是：
+
+~~~text
+write_gate → global commit mutex → validate → prepare → ACTIVE --CAS--> COMMITTED
+                                                        → unlock → help / flatten
+~~~
+
+所有事务（包括只读事务）都在同一全局提交锁内完成读写集验证和 Descriptor 状态 CAS，
+避免验证完成后被另一个事务的提交穿插，从而阻止 Write Skew。事务的 Read/Write
+执行仍可并发；全局锁只串行化提交阶段。Descriptor 状态 CAS 是逻辑提交点，
+Record → Node 的展平只负责物理清理。成功提交后不能再回滚为 ABORTED。
+该方案牺牲提交并发度，作为原型的正确性基线；细粒度协调暂不实现。
 
 已发布的 Record 和被替换节点通过 EBR 退休；descriptor 在对应 Record 清理完成后
 退休。`retire()` 使用退休时读取的**全局 epoch**标记对象，避免落后的线程 epoch
