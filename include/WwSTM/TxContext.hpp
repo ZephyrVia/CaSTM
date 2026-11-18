@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "Config.hpp"
+#include "CommitCoordinator.hpp"
 #include "Logging.hpp"
 #include "GlobalClock.hpp"
 #include "TxDescriptor.hpp"
@@ -107,9 +108,9 @@ public:
     bool commit() {
         if (!ensureActive()) return false;
 
-        // Freeze owner writes for the complete validate/prepare/status-CAS
-        // sequence.  TMVar::tryWriteAndGetRecord takes the same gate, so a
-        // concurrent self-write cannot mutate a draft after preparation.
+        // Freeze owner writes before entering the global commit critical section.
+        // The lock order is always write_gate -> global commit mutex; no other
+        // WwSTM path acquires these locks in the reverse order.
         std::unique_lock<std::mutex> prepare_lock(my_desc_->write_gate);
         TxStatus observed_status = my_desc_->status.load(std::memory_order_acquire);
         if (observed_status != TxStatus::ACTIVE) {
@@ -123,14 +124,41 @@ public:
         }
         my_desc_->prepare_started.store(true, std::memory_order_release);
 
+        // Every transaction, including read-only transactions, serializes
+        // validation through its logical commit point. This closes the
+        // validate/commit window that allowed write skew.
+        std::unique_lock<std::mutex> commit_lock(CommitCoordinator::mutex());
+
+        auto release_commit_locks = [&]() noexcept {
+            if (commit_lock.owns_lock()) {
+                commit_lock.unlock();
+            }
+            if (prepare_lock.owns_lock()) {
+                prepare_lock.unlock();
+            }
+        };
+
+        // A Wound does not take the global mutex, so the transaction may have
+        // become ABORTED while it was waiting to enter the commit section.
+        observed_status = my_desc_->status.load(std::memory_order_acquire);
+        if (observed_status != TxStatus::ACTIVE) {
+            release_commit_locks();
+            if (observed_status == TxStatus::COMMITTED) {
+                finishCommitted_();
+                return true;
+            }
+            abortTransaction();
+            return false;
+        }
+
         if (!validateReadSet()) {
-            prepare_lock.unlock();
+            release_commit_locks();
             abortTransaction();
             return false;
         }
 
         if (!validateWriteSetOwnership()) {
-            prepare_lock.unlock();
+            release_commit_locks();
             abortTransaction();
             return false;
         }
@@ -140,10 +168,9 @@ public:
             if (!entry.var->prepareCommit(entry.record_ptr,
                                           my_desc_,
                                           commit_ts)) {
-                // No record has been logically committed yet.  The descriptor
-                // remains ACTIVE or has already been wounded, so abort can
-                // restore every prepared/installed generation.
-                prepare_lock.unlock();
+                // Some records may already be prepared. Since the descriptor
+                // is not COMMITTED, abort can safely restore every generation.
+                release_commit_locks();
                 abortTransaction();
                 return false;
             }
@@ -157,16 +184,13 @@ public:
         }
 #endif
 
-        // The single transaction-level linearization point.  Every prepared
-        // WriteRecord now has its final payload and timestamp; after this CAS
-        // no path may turn the transaction into ABORTED.
+        // The descriptor CAS remains the transaction-level linearization point.
+        // The global mutex prevents another transaction from committing between
+        // this transaction's read-set validation and this status transition.
         if (!TxStatusHelper::tryCommit(my_desc_->status)) {
             observed_status = my_desc_->status.load(std::memory_order_acquire);
-            prepare_lock.unlock();
+            release_commit_locks();
             if (observed_status == TxStatus::COMMITTED) {
-                // Another commit attempt (or a deterministic test hook) may
-                // have crossed the same irreversible point.  The logical
-                // result is still success; only physical cleanup remains.
                 finishCommitted_();
                 return true;
             }
@@ -174,10 +198,9 @@ public:
             return false;
         }
 
-        // The mutex is a preparation gate only.  Release it before cleanup so
-        // its containing descriptor cannot be reclaimed while this function
-        // is still implicitly unlocking the mutex at scope exit.
-        prepare_lock.unlock();
+        // Release both locks before hooks, helping, or EBR cleanup. In particular,
+        // the descriptor must not be reclaimed while write_gate is still locked.
+        release_commit_locks();
 
 #if STM_WW_TEST_HOOKS
         if (!write_set_.empty()) {

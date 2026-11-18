@@ -334,7 +334,7 @@ TEST_F(TMVarTest, CommittedRecordReadSnapshotUsesNewNodeBeforeFlatten) {
     ASSERT_EQ(var.debugLoadNodeForTest(), record->new_node);
 }
 
-TEST_F(TMVarTest, MultiVariableCommitLinearizesAtDescriptorStatus) {
+TEST_F(TMVarTest, ReadOnlyCommitRevalidatesAfterPreparedWriterCommits) {
     TMVar<int> x(10);
     TMVar<int> y(20);
     CommitPauseState state;
@@ -353,10 +353,11 @@ TEST_F(TMVarTest, MultiVariableCommitLinearizesAtDescriptorStatus) {
     ASSERT_NE(state.descriptor, nullptr);
     ASSERT_EQ(state.descriptor->status.load(std::memory_order_acquire), TxStatus::ACTIVE);
 
+    // The writer has prepared both values but has not crossed its descriptor
+    // commit point. A read-only transaction can still observe the old values.
     TxContext reader;
     ASSERT_EQ(reader.read(&x), 10);
     ASSERT_EQ(reader.read(&y), 20);
-    ASSERT_TRUE(reader.commit());
 
     state.release.signal();
     writer.join();
@@ -364,11 +365,103 @@ TEST_F(TMVarTest, MultiVariableCommitLinearizesAtDescriptorStatus) {
     active_prepare_pause_state = nullptr;
 
     ASSERT_TRUE(committed.load(std::memory_order_acquire));
+    // The read-only transaction must validate after the writer's commit and
+    // reject the stale pair instead of accepting a pre-commit snapshot.
+    ASSERT_FALSE(reader.commit());
 
     TxContext committed_reader;
     ASSERT_EQ(committed_reader.read(&x), 11);
     ASSERT_EQ(committed_reader.read(&y), 21);
     ASSERT_TRUE(committed_reader.commit());
+}
+
+TEST_F(TMVarTest, GlobalCommitMutexPreventsWriteSkew) {
+    TMVar<int> a(1);
+    TMVar<int> b(1);
+    PhaseGate both_ready;
+
+    std::atomic<int> t1_read_b{-1};
+    std::atomic<int> t2_read_a{-1};
+    std::atomic<bool> t1_active{false};
+    std::atomic<bool> t2_active{false};
+    std::atomic<bool> t1_committed{false};
+    std::atomic<bool> t2_committed{false};
+
+    std::thread t1([&] {
+        TxContext tx;
+        t1_read_b.store(tx.read(&b), std::memory_order_release);
+        tx.write(&a, 0);
+        t1_active.store(tx.isActive(), std::memory_order_release);
+
+        both_ready.signal();
+        both_ready.wait_until(2);
+        t1_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    std::thread t2([&] {
+        TxContext tx;
+        t2_read_a.store(tx.read(&a), std::memory_order_release);
+        tx.write(&b, 0);
+        t2_active.store(tx.isActive(), std::memory_order_release);
+
+        both_ready.signal();
+        both_ready.wait_until(2);
+        t2_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    t1.join();
+    t2.join();
+
+    ASSERT_EQ(t1_read_b.load(std::memory_order_acquire), 1);
+    ASSERT_EQ(t2_read_a.load(std::memory_order_acquire), 1);
+    ASSERT_TRUE(t1_active.load(std::memory_order_acquire));
+    ASSERT_TRUE(t2_active.load(std::memory_order_acquire));
+
+    // Exactly one transaction can commit: the second validator observes the
+    // first transaction's committed node and aborts its stale read dependency.
+    ASSERT_NE(t1_committed.load(std::memory_order_acquire),
+              t2_committed.load(std::memory_order_acquire));
+
+    TxContext verifier;
+    const int final_a = verifier.read(&a);
+    const int final_b = verifier.read(&b);
+    ASSERT_TRUE(verifier.commit());
+    ASSERT_GE(final_a + final_b, 1);
+}
+
+TEST_F(TMVarTest, DisjointWriteTransactionsBothCommit) {
+    TMVar<int> a(0);
+    TMVar<int> b(0);
+    PhaseGate both_ready;
+    std::atomic<bool> t1_committed{false};
+    std::atomic<bool> t2_committed{false};
+
+    std::thread t1([&] {
+        TxContext tx;
+        tx.write(&a, 10);
+        both_ready.signal();
+        both_ready.wait_until(2);
+        t1_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    std::thread t2([&] {
+        TxContext tx;
+        tx.write(&b, 20);
+        both_ready.signal();
+        both_ready.wait_until(2);
+        t2_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    t1.join();
+    t2.join();
+
+    ASSERT_TRUE(t1_committed.load(std::memory_order_acquire));
+    ASSERT_TRUE(t2_committed.load(std::memory_order_acquire));
+
+    TxContext verifier;
+    ASSERT_EQ(verifier.read(&a), 10);
+    ASSERT_EQ(verifier.read(&b), 20);
+    ASSERT_TRUE(verifier.commit());
 }
 
 TEST_F(TMVarTest, AbortMultiVariableKeepsOldLogicalView) {

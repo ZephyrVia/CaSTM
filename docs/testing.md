@@ -8,6 +8,22 @@
 `8cd38e0` 上补充版本链剪枝审计。入口仍是
 [tests/CMakeLists.txt](../tests/CMakeLists.txt) 和 [CI 配置](../.github/workflows/ci.yml)。
 
+## WwSTM 全局提交锁
+
+`CommitCoordinator::mutex()` 串行化所有 WwSTM 事务从 ReadSet/WriteSet 验证到
+`ACTIVE → COMMITTED` CAS 的提交阶段；只读事务也必须经过该锁。事务执行期的
+Read/Write 和提交后的 Helping/EBR cleanup 不持有全局锁。
+
+新增回归：
+- `TMVarTest.GlobalCommitMutexPreventsWriteSkew`：两个事务先完成交叉读写，再并发提交；
+  断言恰好一个成功，最终 `A + B >= 1`。
+- `TMVarTest.DisjointWriteTransactionsBothCommit`：不相交写事务都能成功提交。
+- `TMVarTest.ReadOnlyCommitRevalidatesAfterPreparedWriterCommits`：只读事务在写事务
+  Prepare 阶段读取旧值，写事务提交后只读事务必须验证失败。
+
+这组测试用于验证全局提交协调的关键交错，不替代对所有执行历史的形式化证明；
+当前协议不承诺 Opacity。CI 的 mode=0、VERIFY 和 ASan/UBSan job 会执行这些测试。
+
 ## 长时内存与回收验证
 
 `codex/occ-memory-soak` 在未更改运行时源码的情况下，对 OccSTM 的 native 和 system
