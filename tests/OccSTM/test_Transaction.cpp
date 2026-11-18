@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <stdexcept>
 #include <vector>
@@ -212,4 +213,103 @@ TEST(OccAtomicApiTest, VoidCallbackAndExceptionLeaveNextTransactionUsable) {
     EXPECT_EQ(var.loadHead()->payload, 0);
     STM::atomically([&](Transaction& tx) { tx.store(var, tx.load(var) + 1); });
     EXPECT_EQ(var.loadHead()->payload, 1);
+}
+
+
+namespace {
+
+struct PartialCommitPause {
+    std::atomic<bool> first_published{false};
+    std::atomic<bool> allow_second{false};
+};
+
+std::atomic<PartialCommitPause*> g_partial_commit_pause{nullptr};
+
+// Invoked instead of the first WriteSet committer. This hook leaves the
+// first version visible while the same transaction's second variable has
+// not yet been updated, reproducing an otherwise rare publication window.
+void pauseAfterFirstVersion(void* tmvar, void* node, uint64_t wv) {
+    TMVar<int>::committer(tmvar, node, wv);
+    PartialCommitPause* pause =
+        g_partial_commit_pause.load(std::memory_order_acquire);
+    if (!pause) return;
+
+    pause->first_published.store(true, std::memory_order_release);
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(10);
+    while (!pause->allow_second.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+}
+
+} // namespace
+
+TEST(OccAtomicVisibilityTest, ReadOnlyRejectsPartialMultiVariableCommit) {
+    TMVar<int> a(0), b(0);
+    // Distinct stripes eliminate accidental protection by hash collision.
+    ASSERT_NE(StripedLockTable::instance().getStripeIndex(&a),
+              StripedLockTable::instance().getStripeIndex(&b));
+
+    PartialCommitPause pause;
+    g_partial_commit_pause.store(&pause, std::memory_order_release);
+    std::atomic<bool> writer_committed{false};
+
+    std::thread writer([&] {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        tx.store(a, 1);
+        tx.store(b, 1);
+        descriptor.writeSet().front().committer = &pauseAfterFirstVersion;
+        writer_committed.store(tx.commit(), std::memory_order_release);
+    });
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!pause.first_published.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+
+    const bool reached_pause =
+        pause.first_published.load(std::memory_order_acquire);
+    bool accepted_torn_snapshot = false;
+    if (reached_pause) {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        try {
+            const int first = tx.load(a);
+            const int second = tx.load(b);
+            const bool committed = tx.commit();
+            accepted_torn_snapshot =
+                committed && first != second;
+        } catch (const RetryException&) {
+            // In a correct implementation, the reader may retry when it
+            // encounters the still-locked variable.
+        }
+    }
+
+    pause.allow_second.store(true, std::memory_order_release);
+    writer.join();
+    g_partial_commit_pause.store(nullptr, std::memory_order_release);
+
+    ASSERT_TRUE(reached_pause) << "the publication hook must be reached";
+    ASSERT_TRUE(writer_committed.load(std::memory_order_acquire));
+    EXPECT_FALSE(accepted_torn_snapshot)
+        << "a successful read-only transaction accepted a partially "
+           "published A=1, B=0 state";
+
+    {
+        ebr::Guard guard(*EBRManager::instance());
+        TransactionDescriptor descriptor;
+        Transaction tx(&descriptor);
+        tx.begin();
+        EXPECT_EQ(tx.load(a), 1);
+        EXPECT_EQ(tx.load(b), 1);
+        EXPECT_TRUE(tx.commit());
+    }
 }
