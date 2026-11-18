@@ -108,9 +108,14 @@ template <typename T>
 void Transaction::store(TMVar<T>& var, const T& val) {
     using Node = typename TMVar<T>::Node;
     Node* node = new Node(0, nullptr, val);
-
-    desc_->addToWriteSet(&var, node, TMVar<T>::committer,
-                         TMVar<T>::deleter, TMVar<T>::pruneNoThrow);
+    try {
+        desc_->addToWriteSet(&var, node, TMVar<T>::committer,
+                             TMVar<T>::deleter, TMVar<T>::pruneNoThrow);
+    } catch (...) {
+        // A failed vector growth must not leak an unpublished draft.
+        delete node;
+        throw;
+    }
 }
 
 
