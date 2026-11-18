@@ -102,9 +102,12 @@ bool Transaction::validateReadSet() {
             own_stripes.begin(), own_stripes.end(), stripe);
 
         const uint64_t before = table.loadStateByIndex(stripe);
-        if ((StripedLockTable::isLocked(before) && !mine) ||
-            StripedLockTable::version(before) > rv) {
+        if (StripedLockTable::isLocked(before) && !mine) {
             last_abort_reason_ = AbortReason::ReadLocked;
+            return false;
+        }
+        if (StripedLockTable::version(before) > rv) {
+            last_abort_reason_ = AbortReason::ReadVersionChanged;
             return false;
         }
 
